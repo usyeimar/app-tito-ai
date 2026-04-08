@@ -31,3 +31,4 @@ services/runners/resources/data/recordings/
 /storage/
 .idea/
 .DS_Store
+services/pipecat/
