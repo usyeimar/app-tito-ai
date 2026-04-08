@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models\Tenant;
+namespace App\Models\Tenant\KnowledgeBase;
 
 use App\Models\Tenant\Auth\Authentication\User;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;

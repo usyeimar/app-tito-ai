@@ -9,7 +9,7 @@ class CreateKnowledgeBaseDocumentData extends Data
 {
     public function __construct(
         #[Rule('required|exists:knowledge_base_categories,id')]
-        public int $knowledge_base_category_id,
+        public string $knowledge_base_category_id,
         #[Rule('required|string|max:255')]
         public string $title,
         #[Rule('required|string')]

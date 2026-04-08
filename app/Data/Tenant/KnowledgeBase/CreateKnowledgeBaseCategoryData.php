@@ -9,9 +9,9 @@ class CreateKnowledgeBaseCategoryData extends Data
 {
     public function __construct(
         #[Rule('required|exists:knowledge_bases,id')]
-        public int $knowledge_base_id,
+        public string $knowledge_base_id,
         #[Rule('nullable|exists:knowledge_base_categories,id')]
-        public ?int $parent_id,
+        public ?string $parent_id,
         #[Rule('required|string|max:255')]
         public string $name,
         #[Rule('integer')]
