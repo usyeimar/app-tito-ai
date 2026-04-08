@@ -1,0 +1,31 @@
+# Laravel
+/vendor
+/node_modules
+/.phpunit.cache
+/.php-cs-fixer.cache
+/.pint.cache
+/public/hot
+/public/storage
+/*.log
+/.env
+/.env.bak
+/.env.backup
+/storage/*.key
+/bootstrap/cache/*
+
+# React/Node
+/.pnpm-debug.log
+/.npm
+
+# Python/Runners
+services/runners/.venv
+services/runners/__pycache__
+services/runners/.pytest_cache
+services/runners/.ruff_cache
+services/runners/.env
+services/runners/server.log
+services/runners/resources/data/recordings/
+
+# IDE/OS
+.idea/
+.DS_Store
