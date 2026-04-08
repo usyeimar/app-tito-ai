@@ -19,6 +19,7 @@
 
 # Python/Runners
 services/runners/.venv
+services/runners/venv/
 services/runners/__pycache__
 services/runners/.pytest_cache
 services/runners/.ruff_cache
