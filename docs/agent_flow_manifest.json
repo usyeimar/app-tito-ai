@@ -1,0 +1,112 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-sales-flow-001",
+    "metadata": {
+        "name": "Carlos - Calificador de Leads Alloy",
+        "slug": "carlos-alloy-leads",
+        "description": "Agente de ventas que califica leads potenciales para soluciones financieras empresariales de Alloy.",
+        "tags": ["sales", "lead-qualification", "b2b"],
+        "language": "es"
+    },
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback_provider": "openai",
+                "fallback_model": "gpt-4o-mini"
+            }
+        }
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "config": {
+                "temperature": 0.6,
+                "max_tokens": 1536
+            },
+            "instructions": "Eres Carlos, ejecutivo comercial de Alloy Finance.\n\n# Tu Misión\nCalificar leads para soluciones de automatización financiera empresarial. Tu objetivo es entender la necesidad del prospecto y determinar si Alloy puede ayudarle.\n\n# Flujo de Conversación\n1. SALUDO: Preséntate y pregunta si tienen unos minutos.\n2. DESCUBRIMIENTO: Pregunta sobre:\n   - Industria de la empresa\n   - Tamaño (número de empleados)\n   - Volumen mensual de transacciones\n   - Principales desafíos con pagos y flujo de caja\n3. SOLUCIÓN: Presenta el producto Alloy más adecuado:\n   - FlowOptimizer: para empresas con +500 transacciones/mes\n   - InsightDash: para empresas que necesitan analytics financieros\n4. CIERRE: Si hay interés, agenda una demo con el equipo comercial.\n\n# Productos Alloy\n- FlowOptimizer: Automatiza pagos recurrentes y conciliación. Desde $299/mes.\n- InsightDash: Dashboard de analytics financieros en tiempo real. Desde $199/mes.\n- PayConnect: API de pagos multi-banco para fintechs. Pricing personalizado.\n\n# Estilo\n- Conversacional y consultivo, no agresivo.\n- Haz UNA pregunta a la vez.\n- Valida lo que dice el prospecto antes de avanzar.\n- Respuestas cortas: máximo 2 oraciones."
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "agendar_demo",
+                "description": "Agenda una demostración del producto con el equipo comercial.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "nombre_empresa": {
+                            "type": "string",
+                            "description": "Nombre de la empresa del prospecto"
+                        },
+                        "email_contacto": {
+                            "type": "string",
+                            "description": "Email del prospecto para enviar la invitación"
+                        },
+                        "producto_interes": {
+                            "type": "string",
+                            "enum": [
+                                "FlowOptimizer",
+                                "InsightDash",
+                                "PayConnect"
+                            ],
+                            "description": "Producto de interés"
+                        }
+                    },
+                    "required": [
+                        "nombre_empresa",
+                        "email_contacto",
+                        "producto_interes"
+                    ]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "speed": 1.08
+        },
+        "behavior": {
+            "interruptibility": true,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 20,
+                        "message": ["¿Me sigue escuchando?", "¿Sigue en línea?"]
+                    }
+                ],
+                "final_message": "Parece que se cortó la llamada. Le enviaremos un correo para continuar. ¡Hasta pronto!"
+            },
+            "max_duration_seconds": 900
+        }
+    },
+    "compliance": {
+        "pii_redaction": false,
+        "record_audio": true
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}

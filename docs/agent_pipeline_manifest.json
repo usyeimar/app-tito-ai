@@ -1,0 +1,138 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-fintech-pipeline-001",
+    "tenant_id": "alloy-finance-colombia",
+    "callback_url": "https://alloy-finance.app.tito.ai/api/v1/webhooks/voice-agents/events",
+    "metadata": {
+        "name": "Julia - Asistente Financiero Alloy",
+        "slug": "julia-alloy-fintech",
+        "description": "Asistente de voz financiera para Alloy Finance. Gestiona consultas de saldo, transferencias y soporte al cliente en español colombiano.",
+        "tags": ["fintech", "banking", "colombia", "pipeline"],
+        "language": "es"
+    },
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback_provider": "openai",
+                "fallback_model": "gpt-4o-mini"
+            }
+        }
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "config": {
+                "temperature": 0.4,
+                "max_tokens": 2048,
+                "top_p": 0.9
+            },
+            "instructions": "Eres Julia, la asistente financiera de Alloy Finance en Colombia.\n\n# Personalidad\n- Profesional, cálida y confiable.\n- Hablas en español colombiano natural, sin sonar robótica.\n- Usas \"usted\" para tratar al cliente con respeto.\n\n# Tareas Principales\n1. Consultar saldos de cuenta cuando el cliente lo solicita.\n2. Facilitar transferencias entre cuentas (siempre confirmar antes de ejecutar).\n3. Responder preguntas generales sobre productos financieros.\n4. Derivar a un agente humano si el cliente lo pide o si la consulta es compleja.\n\n# Reglas Importantes\n- NUNCA reveles información de cuenta sin confirmar la identidad del cliente.\n- Siempre confirma montos y cuentas destino antes de transferencias.\n- Si no entiendes algo, pide amablemente que lo repita.\n- Mantén las respuestas concisas (máximo 2-3 oraciones por turno).\n- Usa pausas naturales: \" - \" para pausas cortas.\n\n# Formato de Moneda\n- Di los montos en pesos colombianos de forma natural.\n- Ejemplo: \"Dos millones quinientos mil pesos\" en vez de \"$2.500.000\"."
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "consultar_saldo",
+                "description": "Consulta el saldo disponible en la cuenta del cliente.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tipo_cuenta": {
+                            "type": "string",
+                            "enum": ["ahorros", "corriente"],
+                            "description": "Tipo de cuenta a consultar"
+                        }
+                    },
+                    "required": ["tipo_cuenta"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "transferir_dinero",
+                "description": "Transfiere dinero a otra cuenta. Requiere confirmación del usuario.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "cuenta_destino": {
+                            "type": "string",
+                            "description": "Número de cuenta destino"
+                        },
+                        "monto": {
+                            "type": "number",
+                            "description": "Monto a transferir en pesos colombianos"
+                        }
+                    },
+                    "required": ["cuenta_destino", "monto"]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "transport": {
+            "provider": "livekit"
+        },
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es",
+            "latency_mode": "interactive"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "speed": 1.05
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "min_silence_duration_ms": 400
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 15,
+                        "message": [
+                            "¿Sigues ahí, señor?",
+                            "¿Me está escuchando?"
+                        ]
+                    },
+                    {
+                        "wait_seconds": 30,
+                        "message": [
+                            "Parece que no logro escucharle.",
+                            "¿Desea que le transfiera a un asesor?"
+                        ]
+                    }
+                ],
+                "final_message": "Como no he recibido respuesta, cerraré la llamada. Que tenga un buen día."
+            },
+            "max_duration_seconds": 1800
+        }
+    },
+    "compliance": {
+        "pii_redaction": true,
+        "record_audio": true
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}

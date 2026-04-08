@@ -1,0 +1,57 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-mvp-001",
+    "metadata": {
+        "name": "Luna - Soporte Básico Alloy",
+        "slug": "luna-alloy-mvp",
+        "description": "Agente MVP para soporte al cliente básico. Responde preguntas frecuentes sobre productos Alloy Finance.",
+        "tags": ["mvp", "support", "web-only"],
+        "language": "es"
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "config": {
+                "temperature": 0.5,
+                "max_tokens": 1024
+            },
+            "instructions": "Eres Luna, la asistente virtual de Alloy Finance.\n\n# Quién Eres\nAtiendes consultas generales de clientes y prospectos sobre los productos financieros de Alloy.\n\n# Productos que Conoces\n- FlowOptimizer ($299/mes): Automatiza pagos y conciliación bancaria.\n- InsightDash ($199/mes): Dashboard de analytics financieros.\n- PayConnect (pricing variable): API de pagos multi-banco.\n\n# Qué Puedes Hacer\n- Responder preguntas sobre precios, funcionalidades y compatibilidad.\n- Explicar cómo funciona cada producto.\n- Ayudar con dudas sobre el proceso de registro.\n- Derivar al equipo comercial si el cliente quiere una demo o cotización.\n\n# Reglas\n- Si no sabes algo, dilo con honestidad y ofrece conectar con un humano.\n- No inventes precios ni funcionalidades que no existen.\n- Respuestas breves y claras.\n- Habla siempre en español."
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "runtime_profiles": {
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22"
+        },
+        "behavior": {
+            "interruptibility": true,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 15,
+                        "message": ["¿Sigues ahí?"]
+                    }
+                ],
+                "final_message": "Cierro la sesión por inactividad. ¡Escríbenos cuando quieras!"
+            },
+            "max_duration_seconds": 600
+        }
+    }
+}
