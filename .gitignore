@@ -27,5 +27,6 @@ services/runners/server.log
 services/runners/resources/data/recordings/
 
 # IDE/OS
+/storage/
 .idea/
 .DS_Store
