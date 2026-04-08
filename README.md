@@ -33,6 +33,10 @@ pnpm run dev
 php artisan test
 ```
 
+## Documentation
+
+- [SIP Trunks Architecture & Integration](docs/SIP-TRUNKS.md)
+
 ## License
 
 MIT
