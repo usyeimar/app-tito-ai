@@ -1,0 +1,289 @@
+import asyncio
+import logging
+import time
+import uuid
+
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status, Request
+
+from app.core.config import settings
+from app.schemas.agent import AgentConfig
+from app.schemas.sessions import SessionResponse, SessionContext, ActionResponse, SessionListResponse, SessionLink
+from app.schemas.errors import APIErrorResponse
+from app.services.livekit_service import LiveKitService
+from app.services.daily_service import DailyService
+from app.services.session_manager import session_manager
+from app.services.task_manager import task_manager
+from app.services.agents.pipelines.agent_pipeline_engine import AgentPipelineEngine
+from app.services.webhook_service import WebhookService
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+def get_session_links(request: Request, session_id: str):
+    """Genera enlaces HATEOAS para una sesión, incluyendo WebSocket."""
+    base_url = str(request.base_url).rstrip("/")
+    # Protocolo WS
+    ws_protocol = "wss" if request.url.scheme == "https" else "ws"
+    ws_url = f"{ws_protocol}://{request.url.netloc}/api/v1/sessions/{session_id}/ws"
+    
+    api_path = f"{base_url}/api/v1/sessions/{session_id}"
+    
+    return {
+        "self": SessionLink(href=api_path, method="GET"),
+        "stop": SessionLink(href=api_path, method="DELETE"),
+        "ws": SessionLink(href=ws_url, method="GET"),
+    }
+
+
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SessionResponse,
+    summary="Crear Sesion de Agente de Voz",
+    response_description="Sesion creada exitosamente con credenciales de conexion",
+    responses={
+        201: {"model": SessionResponse, "description": "Sesion creada exitosamente."},
+        503: {"model": APIErrorResponse, "description": "Runner al maximo de capacidad."},
+    },
+)
+async def create_session(config: AgentConfig, request: Request):
+    """
+    Crea una nueva sesion de agente de voz en tiempo real.
+
+    **Que hace este endpoint:**
+
+    1. Verifica que el runner tenga capacidad disponible.
+    2. Crea una sala WebRTC en el proveedor configurado (Daily.co o LiveKit).
+    3. Genera tokens de acceso para el usuario y el bot.
+    4. Lanza el pipeline de IA en background: **STT → LLM → TTS**.
+    5. Devuelve las credenciales y enlaces HATEOAS para la conexion.
+
+    **Como usar la respuesta:**
+
+    - Usa `url` + `access_token` para unirte a la sala desde tu frontend (Daily SDK o LiveKit SDK).
+    - Conecta al WebSocket indicado en `_links.ws` para recibir transcripciones en tiempo real.
+    - El agente empezara a hablar automaticamente si `behavior.initial_action` es `SPEAK_FIRST`.
+
+    **Proveedores de transporte:**
+
+    - Si `runtime_profiles.transport.provider` no se especifica, se usa el default del server (`DEFAULT_TRANSPORT_PROVIDER`).
+    - `daily` → Crea sala en Daily.co, devuelve URL HTTPS.
+    - `livekit` → Crea sala en LiveKit, devuelve URL WSS.
+    """
+    if task_manager.count() >= settings.MAX_CONCURRENT_SESSIONS:
+        logger.warning(f"Runner at capacity: {task_manager.count()}/{settings.MAX_CONCURRENT_SESSIONS}")
+        raise HTTPException(
+            status_code=503,
+            detail="Runner at capacity",
+            headers={"Retry-After": "30"},
+        )
+
+    try:
+        # Determinar proveedor
+        provider = settings.DEFAULT_TRANSPORT_PROVIDER.lower()
+        if (
+            hasattr(config.runtime_profiles, "transport")
+            and config.runtime_profiles.transport
+        ):
+            provider = config.runtime_profiles.transport.provider.lower()
+
+        session_id = f"sess_{uuid.uuid4().hex[:12]}"
+        room_name = f"tito_{config.agent_id}_{uuid.uuid4().hex[:8]}"
+        participant_name = f"user_{uuid.uuid4().hex[:6]}"
+
+        # 1. Crear room en proveedor de transporte (síncrono, falla rápido)
+        if provider == "daily":
+            room_data = await DailyService.create_room_and_tokens(room_name, participant_name)
+        else:
+            room_data = LiveKitService.create_room_and_tokens(room_name, participant_name)
+
+        # 2. Guardar metadata de configuración
+        await session_manager.save_session(session_id, config, room_name=room_name, provider=provider)
+
+        # 3. Lanzar pipeline en background CON referencia controlada
+        task = asyncio.create_task(
+            _run_session(session_id, room_data, config, provider),
+            name=f"session-{session_id}"
+        )
+        await task_manager.add(session_id, task)
+
+        logger.info(f"🚀 Sesión [{session_id}] iniciada en [{provider}]")
+
+        # 4. Preparar respuesta con HATEOAS
+        expiration = time.time() + 3600
+        links = get_session_links(request, session_id)
+
+        return SessionResponse(
+            session_id=session_id,
+            room_name=room_data["room_name"],
+            provider=provider,
+            url=room_data["ws_url"],
+            access_token=room_data["user_token"],
+            context=SessionContext(
+                agent_id=config.agent_id,
+                tenant_id=config.tenant_id,
+                created_at=time.time(),
+                expires_at=expiration
+            ),
+            _links=links
+        )
+    except Exception as e:
+        logger.error(f"❌ Error al crear sesión: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo inicializar la sesión del agente: {str(e)}",
+        )
+
+
+async def _run_session(session_id: str, room_data: dict, config: AgentConfig, provider: str):
+    """Wrapper que asegura cleanup aunque el pipeline falle."""
+    try:
+        engine = AgentPipelineEngine(
+            room_url=room_data["ws_url"],
+            token=room_data["bot_token"],
+            config=config,
+            room_name=room_data["room_name"]
+        )
+        # Sincronizar session_id si AgentPipelineEngine genera uno propio (actualmente lo hace)
+        engine.session_id = session_id
+        await engine.run()
+    except asyncio.CancelledError:
+        logger.info(f"session_cancelled | session_id: {session_id}")
+        raise
+    except Exception as e:
+        logger.error(f"session_error | session_id: {session_id} | error: {e}")
+        # En el futuro usar emit_event_async
+        try:
+            await WebhookService.emit_event(
+                config.tenant_id,
+                config.agent_id,
+                "session.error",
+                room_data["ws_url"],
+                {"session_id": session_id, "error": str(e)},
+                override_url=config.callback_url
+            )
+        except:
+            pass
+    finally:
+        await task_manager.remove(session_id)
+        await session_manager.delete_session(session_id)
+        logger.info(f"session_cleanup_complete | session_id: {session_id}")
+
+
+@router.get(
+    "/",
+    tags=["Sessions"],
+    response_model=SessionListResponse,
+    summary="Listar Sesiones Activas",
+    response_description="Lista de sesiones activas en este runner",
+)
+async def list_active_sessions(request: Request):
+    """
+    Lista las sesiones de voz activas en este runner.
+
+    Devuelve el conteo de sesiones activas y el estado operativo del runner.
+    Util para dashboards de monitoreo y balanceo de carga.
+    """
+    sessions = await session_manager.list_sessions()
+    active_count = task_manager.count()
+    
+    base_url = str(request.base_url).rstrip("/")
+    links = {
+        "self": SessionLink(href=f"{base_url}/api/v1/sessions", method="GET"),
+        "create": SessionLink(href=f"{base_url}/api/v1/sessions", method="POST"),
+    }
+
+    return SessionListResponse(
+        sessions=sessions,
+        count=active_count,
+        status="OPERATIONAL",
+        _links=links
+    )
+
+
+@router.delete(
+    "/{session_id}",
+    tags=["Sessions"],
+    response_model=ActionResponse,
+    summary="Terminar Sesion de Agente",
+    response_description="Confirmacion de que la sesion fue terminada",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "Sesion sess_a1b2c3d4e5f6 terminada exitosamente."
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Sesion no encontrada",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Session not found"}
+                }
+            }
+        },
+    },
+)
+async def stop_session(session_id: str):
+    """
+    Termina una sesion de agente de voz de forma inmediata.
+
+    **Que hace este endpoint:**
+
+    1. Cancela el pipeline de Pipecat (STT/LLM/TTS) en este pod.
+    2. Publica un comando `stop` via Redis Pub/Sub para otros pods.
+    3. Elimina la sala WebRTC en el proveedor (Daily/LiveKit).
+    4. Limpia los metadatos de sesion en Redis.
+
+    **Cuando usarlo:**
+
+    - El usuario cierra la llamada desde el frontend.
+    - Un administrador necesita forzar el cierre de una sesion.
+    - Timeout o error detectado desde el backend.
+    """
+    session = await session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # 1. Cancelar el pipeline localmente (si existe en este pod)
+    await task_manager.stop(session_id)
+
+    # 2. Notificar vía Redis para otros pods (Opción C del plan)
+    import json
+    await session_manager._redis.publish(f"session:{session_id}:control", json.dumps({"action": "stop"}))
+
+    # 3. Eliminar room en el proveedor
+    try:
+        room_name = session.get("room_name")
+        provider = session.get("provider", "livekit")
+        if provider == "daily":
+            await DailyService.delete_room(room_name)
+        else:
+            await LiveKitService.delete_room(room_name)
+    except Exception as e:
+        logger.warning(f"delete_room_failed | session_id: {session_id} | error: {e}")
+
+    return ActionResponse(
+        success=True,
+        message=f"Sesión {session_id} terminada exitosamente."
+    )
+
+
+@router.websocket("/{session_id}/ws")
+async def session_websocket(session_id: str, ws: WebSocket):
+    session = await session_manager.get_session(session_id)
+    if not session:
+        await ws.close(code=4004, reason="Session not found")
+        return
+
+    await session_manager.connect_ws(session_id, ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        session_manager.disconnect_ws(session_id, ws)

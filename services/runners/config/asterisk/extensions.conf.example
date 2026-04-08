@@ -1,0 +1,43 @@
+; ============================================================================
+; Asterisk Dialplan for Tito AI SIP Bridge
+; ============================================================================
+; Copy to /etc/asterisk/extensions.conf
+;
+; All inbound calls are routed to AudioSocket, which opens a TCP connection
+; to the Tito runner. The runner handles STT → LLM → TTS via Pipecat.
+;
+; AudioSocket app syntax: AudioSocket(<uuid>,<host>:<port>)
+;   - uuid: channel unique ID (used to correlate the call)
+;   - host:port: TCP address of the AudioSocket server in the runner
+; ============================================================================
+
+[general]
+static=yes
+writeprotect=no
+
+; ── Inbound Context ──────────────────────────────────────────────────────────
+; Calls arriving from customer PBXes or registered extensions land here.
+; The dialed extension (EXTEN) is passed as AGENT_ID channel variable
+; so the runner can resolve which agent should handle the call.
+
+[tito-inbound]
+; Match any extension — route to AudioSocket
+exten => _X.,1,NoOp(Inbound call to extension ${EXTEN} from ${CALLERID(num)})
+ same => n,Set(AGENT_ID=${EXTEN})
+ same => n,Set(CHANNEL(audioreadformat)=slin16)
+ same => n,Set(CHANNEL(audiowriteformat)=slin16)
+ same => n,Answer()
+ same => n,AudioSocket(${CHANNEL(uniqueid)},127.0.0.1:9092)
+ same => n,Hangup()
+
+; ── Outbound Context ─────────────────────────────────────────────────────────
+; Used by AMI Originate to place outbound calls.
+; The CALL_ID and AGENT_ID variables are set by the AMI Originate action.
+
+[tito-outbound]
+exten => s,1,NoOp(Outbound call CALL_ID=${CALL_ID} AGENT_ID=${AGENT_ID})
+ same => n,Set(CHANNEL(audioreadformat)=slin16)
+ same => n,Set(CHANNEL(audiowriteformat)=slin16)
+ same => n,Answer()
+ same => n,AudioSocket(${CHANNEL(uniqueid)},127.0.0.1:9092)
+ same => n,Hangup()

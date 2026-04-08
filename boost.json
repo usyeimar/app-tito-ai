@@ -1,0 +1,26 @@
+{
+    "agents": [
+        "opencode",
+        "gemini",
+        "cursor"
+    ],
+    "guidelines": true,
+    "herd_mcp": false,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "packages": [
+        "laravel/fortify"
+    ],
+    "sail": false,
+    "skills": [
+        "laravel-best-practices",
+        "passport-development",
+        "scout-development",
+        "socialite-development",
+        "wayfinder-development",
+        "pest-testing",
+        "inertia-react-development",
+        "tailwindcss-development",
+        "fortify-development"
+    ]
+}

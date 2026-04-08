@@ -1,0 +1,58 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+      - "9092:9092"  # AudioSocket TCP server
+    volumes:
+      - ./app:/app/app
+      - ./resources:/app/resources
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - ASTERISK_AMI_HOST=asterisk
+      - ASTERISK_AMI_PORT=5038
+      - ASTERISK_AMI_USER=tito
+      - ASTERISK_AMI_SECRET=${ASTERISK_AMI_SECRET:-changeme}
+      - SIP_AUDIOSOCKET_HOST=0.0.0.0
+      - SIP_AUDIOSOCKET_PORT=9092
+      - SIP_ENABLED=${SIP_ENABLED:-false}
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  asterisk:
+    image: andrius/asterisk:alpine-20
+    ports:
+      - "5060:5060/udp"   # SIP signaling
+      - "5060:5060/tcp"
+      - "10000-10099:10000-10099/udp"  # RTP media
+    volumes:
+      - ./config/asterisk/pjsip.conf.example:/etc/asterisk/pjsip.conf:ro
+      - ./config/asterisk/extensions.conf.example:/etc/asterisk/extensions.conf:ro
+    environment:
+      - ASTERISK_AMI_USER=tito
+      - ASTERISK_AMI_SECRET=${ASTERISK_AMI_SECRET:-changeme}
+    profiles:
+      - sip  # Only starts with: docker compose --profile sip up
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  redis_data:

@@ -1,0 +1,121 @@
+; ============================================================================
+; Asterisk PJSIP Configuration for Tito AI SIP Bridge
+; ============================================================================
+; Copy this file to /etc/asterisk/pjsip.conf and adjust to your environment.
+;
+; This config sets up:
+;   1. A transport for SIP signaling (UDP on port 5060)
+;   2. An inbound endpoint for receiving calls from customer PBXes
+;   3. A registration for "register" mode trunks (registering on customer PBX)
+;   4. An outbound trunk for originating calls via SIP carrier (e.g., Twilio)
+; ============================================================================
+
+; ── Global Transport ─────────────────────────────────────────────────────────
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+
+; ── Inbound: Accept calls from customer PBXes ───────────────────────────────
+; The customer sends calls TO this Asterisk. Authentication via IP or credentials.
+; You can create one of these per customer trunk, or use a single wildcard
+; endpoint with IP-based matching.
+
+[tito-inbound]
+type=endpoint
+context=tito-inbound
+transport=transport-udp
+disallow=all
+allow=ulaw
+allow=alaw
+; Direct media off — all audio goes through Asterisk (needed for AudioSocket)
+direct_media=no
+; Accept calls from any authenticated source
+auth=tito-inbound-auth
+aors=tito-inbound
+
+[tito-inbound-auth]
+type=auth
+auth_type=userpass
+username=tito-inbound
+; CHANGE THIS — use a strong password
+password=CHANGE_ME_INBOUND_SECRET
+
+[tito-inbound]
+type=aor
+max_contacts=10
+
+[tito-inbound-identify]
+type=identify
+endpoint=tito-inbound
+; Add customer PBX IPs here for IP-based auth (alternative to user/pass)
+; match=203.0.113.10
+; match=198.51.100.0/24
+
+; ── Register Mode: Register on customer's PBX as an extension ────────────────
+; Asterisk registers itself on the customer's PBX so it appears as extension.
+; One registration per customer trunk in register mode.
+;
+; Example for a customer PBX at 203.0.113.50:
+;
+; [customer-pbx-1]
+; type=registration
+; transport=transport-udp
+; outbound_auth=customer-pbx-1-auth
+; server_uri=sip:203.0.113.50
+; client_uri=sip:1001@203.0.113.50
+; retry_interval=60
+; expiration=300
+;
+; [customer-pbx-1-auth]
+; type=auth
+; auth_type=userpass
+; username=1001
+; password=CUSTOMER_PROVIDED_PASSWORD
+;
+; [customer-pbx-1]
+; type=aor
+; contact=sip:203.0.113.50
+;
+; [customer-pbx-1]
+; type=endpoint
+; context=tito-inbound
+; transport=transport-udp
+; outbound_auth=customer-pbx-1-auth
+; aors=customer-pbx-1
+; disallow=all
+; allow=ulaw
+; allow=alaw
+; direct_media=no
+
+; ── Outbound: SIP carrier trunk for originating calls ────────────────────────
+; Example: Twilio Elastic SIP Trunk
+;
+; [twilio-trunk]
+; type=registration
+; transport=transport-udp
+; outbound_auth=twilio-trunk-auth
+; server_uri=sip:your-account.pstn.twilio.com
+; retry_interval=60
+;
+; [twilio-trunk-auth]
+; type=auth
+; auth_type=userpass
+; username=YOUR_TWILIO_SIP_USERNAME
+; password=YOUR_TWILIO_SIP_PASSWORD
+;
+; [twilio-trunk]
+; type=aor
+; contact=sip:your-account.pstn.twilio.com
+;
+; [twilio-trunk]
+; type=endpoint
+; context=tito-outbound
+; transport=transport-udp
+; outbound_auth=twilio-trunk-auth
+; aors=twilio-trunk
+; disallow=all
+; allow=ulaw
+; allow=alaw
+; direct_media=no

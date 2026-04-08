@@ -1,0 +1,183 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-unified-001",
+    "metadata": {
+        "name": "Julia Pro - Asistente Alloy Completo",
+        "slug": "julia-alloy-unified",
+        "description": "Asistente financiero completo con todas las capacidades: consultas, transferencias, soporte SIP, y compliance financiero.",
+        "tags": ["fintech", "full-featured", "compliance", "enterprise"],
+        "language": "es"
+    },
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback_provider": "openai",
+                "fallback_model": "gpt-4o-mini",
+                "health_check_interval_ms": 5000
+            }
+        }
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "config": {
+                "temperature": 0.4,
+                "max_tokens": 2048,
+                "top_p": 0.9
+            },
+            "instructions": "Eres Julia, asistente financiera sénior de Alloy Finance. Atiendes clientes empresariales con cuentas de alto volumen.\n\n# Capacidades\n1. CONSULTAS: Saldos, movimientos, estado de transferencias.\n2. TRANSFERENCIAS: Ejecutar transferencias con doble confirmación.\n3. SOPORTE: Resolver dudas sobre productos, tarifas y procesos.\n4. ESCALAMIENTO: Transferir a agente humano vía SIP cuando el cliente lo solicita o la consulta supera tu alcance.\n\n# Protocolo de Seguridad\n- SIEMPRE confirma identidad antes de mostrar datos financieros.\n- Para transferencias mayores a 5 millones de pesos, requiere doble factor.\n- Nunca compartas datos de cuenta en texto plano si la grabación está activa.\n\n# Productos Alloy\n- FlowOptimizer: Automatización de pagos. $299/mes base + comisión por volumen.\n- InsightDash: Analytics financieros. $199/mes.\n- PayConnect: API de pagos. Pricing según volumen.\n- AlloyBlack: Cuenta empresarial premium. $99/mes, sin comisiones hasta 1000 transacciones.\n\n# Estilo\n- Español colombiano formal pero cercano.\n- Usa \"usted\".\n- Máximo 3 oraciones por respuesta.\n- Si hay silencio, espera antes de hablar."
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "consultar_saldo",
+                "description": "Consulta el saldo disponible de la cuenta del cliente.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tipo_cuenta": {
+                            "type": "string",
+                            "enum": ["ahorros", "corriente", "empresarial"],
+                            "description": "Tipo de cuenta"
+                        }
+                    },
+                    "required": ["tipo_cuenta"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "consultar_movimientos",
+                "description": "Consulta los últimos movimientos de la cuenta.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tipo_cuenta": {
+                            "type": "string",
+                            "enum": ["ahorros", "corriente", "empresarial"]
+                        },
+                        "dias": {
+                            "type": "integer",
+                            "description": "Número de días hacia atrás (máximo 30)"
+                        }
+                    },
+                    "required": ["tipo_cuenta"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "transferir_dinero",
+                "description": "Ejecuta una transferencia bancaria. Requiere doble confirmación del usuario.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "cuenta_origen": {
+                            "type": "string",
+                            "description": "Número de cuenta origen"
+                        },
+                        "cuenta_destino": {
+                            "type": "string",
+                            "description": "Número de cuenta destino"
+                        },
+                        "monto": {
+                            "type": "number",
+                            "description": "Monto en pesos colombianos"
+                        },
+                        "concepto": {
+                            "type": "string",
+                            "description": "Concepto de la transferencia"
+                        }
+                    },
+                    "required": ["cuenta_origen", "cuenta_destino", "monto"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "transferir_a_agente",
+                "description": "Transfiere la llamada a un agente humano disponible.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "motivo": {
+                            "type": "string",
+                            "description": "Motivo de la transferencia"
+                        },
+                        "prioridad": {
+                            "type": "string",
+                            "enum": ["normal", "alta", "urgente"],
+                            "description": "Nivel de prioridad"
+                        }
+                    },
+                    "required": ["motivo"]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es",
+            "latency_mode": "interactive"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "speed": 1.0
+        },
+        "transport": {
+            "provider": "livekit"
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "min_silence_duration_ms": 500
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 15,
+                        "message": [
+                            "¿Sigue en línea, señor?",
+                            "¿Me puede escuchar?"
+                        ]
+                    },
+                    {
+                        "wait_seconds": 30,
+                        "message": [
+                            "Noto que hay silencio. ¿Desea que le transfiera a un asesor?"
+                        ]
+                    }
+                ],
+                "final_message": "Cerraré la sesión por inactividad. Si necesita ayuda, llame al 018000-ALLOY. Buen día."
+            },
+            "max_duration_seconds": 1800
+        }
+    },
+    "compliance": {
+        "pii_redaction": true,
+        "record_audio": true
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}

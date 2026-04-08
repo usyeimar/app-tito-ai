@@ -1,0 +1,32 @@
+; ============================================================================
+; Asterisk Manager Interface (AMI) Configuration
+; ============================================================================
+; Copy to /etc/asterisk/manager.conf
+;
+; This allows the Tito runner to connect via AMI to:
+;   - Monitor call events (Hangup, DTMF, Registry)
+;   - Execute actions (Originate, Hangup, GetVar)
+;   - Query SIP registrations
+; ============================================================================
+
+[general]
+enabled = yes
+port = 5038
+bindaddr = 0.0.0.0
+
+; ── Tito Runner user ─────────────────────────────────────────────────────────
+; Must match ASTERISK_AMI_USER and ASTERISK_AMI_SECRET in .env
+
+[tito]
+secret = changeme
+deny = 0.0.0.0/0.0.0.0
+; Allow connections from the runner container (adjust for your network)
+permit = 127.0.0.1/255.255.255.0
+permit = 172.16.0.0/255.240.0.0
+permit = 10.0.0.0/255.0.0.0
+
+; Read permissions: system, call, log, agent, user, dtmf
+read = system,call,log,agent,user,dtmf
+
+; Write permissions: system, call, originate
+write = system,call,originate
