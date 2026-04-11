@@ -12,14 +12,3 @@ router.include_router(metrics_router, prefix="/metrics", tags=["Metrics"])
 router.include_router(deployments_router, prefix="/deployments", tags=["Deployments"])
 router.include_router(trunks_router, prefix="/trunks", tags=["SIP Trunks"])
 router.include_router(sip_router, prefix="/sip", tags=["SIP"])
-
-
-@router.get(
-    "/status",
-    tags=["Health"],
-    summary="Estado de API v1",
-    response_description="Confirmacion de que la API v1 esta activa",
-)
-async def status():
-    """Verifica que el router de API v1 esta montado y respondiendo."""
-    return {"message": "API v1 is running"}

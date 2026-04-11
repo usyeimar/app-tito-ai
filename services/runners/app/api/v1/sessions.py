@@ -37,16 +37,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def get_session_links(request: Request, session_id: str):
-    """Genera enlaces HATEOAS para una sesión, incluyendo WebSocket."""
+def get_session_links(
+    request: Request, session_id: str, ws_url: str = None, playground_url: str = None
+):
+    """Genera enlaces HATEOAS para una sesión."""
     base_url = str(request.base_url).rstrip("/")
-    # Protocolo WS
     ws_protocol = "wss" if request.url.scheme == "https" else "ws"
     base_ws = f"{ws_protocol}://{request.url.netloc}/api/v1/sessions/{session_id}"
 
     api_path = f"{base_url}/api/v1/sessions/{session_id}"
 
-    return {
+    links = {
         "self": SessionLink(href=api_path, method="GET"),
         "stop": SessionLink(href=api_path, method="DELETE"),
         "transcript": SessionLink(href=f"{base_ws}/transcript", method="GET"),
@@ -54,11 +55,19 @@ def get_session_links(request: Request, session_id: str):
         "audio": SessionLink(href=f"{base_ws}/audio", method="GET"),
     }
 
+    if ws_url:
+        links["preview"] = SessionLink(href=ws_url, method="GET")
+    if playground_url:
+        links["playground"] = SessionLink(href=playground_url, method="GET")
+
+    return links
+
 
 @router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
     response_model=SessionResponse,
+    response_model_exclude_none=True,
     summary="Crear Sesion de Agente de Voz",
     response_description="Sesion creada exitosamente con credenciales de conexion",
     responses={
@@ -116,6 +125,32 @@ async def create_session(config: AgentConfig, request: Request):
         room_name = f"tito_{config.agent_id}_{uuid.uuid4().hex[:8]}"
         participant_name = f"user_{uuid.uuid4().hex[:6]}"
 
+        # Provider "websocket": no se levanta room ni pipeline ahora.
+        # El pipeline se construye on-demand cuando el cliente conecta a /audio.
+        if provider == "websocket":
+            await session_manager.save_session(
+                session_id, config, room_name=session_id, provider=provider
+            )
+            ws_protocol = "wss" if request.url.scheme == "https" else "ws"
+            audio_ws_url = (
+                f"{ws_protocol}://{request.url.netloc}"
+                f"/api/v1/sessions/{session_id}/audio"
+            )
+            logger.info(f"🚀 Sesión [{session_id}] iniciada en [websocket]")
+            return SessionResponse(
+                session_id=session_id,
+                room_name=session_id,
+                provider="websocket",
+                ws_url=audio_ws_url,
+                context=SessionContext(
+                    agent_id=config.agent_id,
+                    tenant_id=config.tenant_id,
+                    created_at=time.time(),
+                    expires_at=time.time() + 3600,
+                ),
+                _links=get_session_links(request, session_id),
+            )
+
         # 1. Crear room en proveedor de transporte (síncrono, falla rápido)
         if provider == "daily":
             room_data = await DailyService.create_room_and_tokens(
@@ -142,13 +177,20 @@ async def create_session(config: AgentConfig, request: Request):
 
         # 4. Preparar respuesta con HATEOAS
         expiration = time.time() + 3600
-        links = get_session_links(request, session_id)
+
+        ws_url = room_data["ws_url"]
+        playground_url = f"https://livekit.io/playground?room={room_data['room_name']}&token={room_data['user_token']}"
+
+        links = get_session_links(
+            request, session_id, ws_url=ws_url, playground_url=playground_url
+        )
 
         return SessionResponse(
             session_id=session_id,
             room_name=room_data["room_name"],
             provider=provider,
-            url=room_data["ws_url"],
+            ws_url=ws_url,
+            playground_url=playground_url,
             access_token=room_data["user_token"],
             context=SessionContext(
                 agent_id=config.agent_id,
@@ -346,34 +388,56 @@ async def session_chat_websocket(session_id: str, ws: WebSocket):
         {"type": "message", "content": "texto del agente"}
         {"type": "status", "state": "listening|thinking|speaking"}
     """
+    logger.info(f"[WS chat] session_id={session_id}")
     session = await session_manager.get_session(session_id)
+    logger.info(f"[WS chat] session found: {session is not None}")
     if not session:
+        logger.warning(f"[WS chat] Session not found: {session_id}")
         await ws.close(code=4004, reason="Session not found")
         return
 
-    await ws.accept()
-    await session_manager.connect_ws(session_id, ws, is_chat=True)
+    await session_manager.connect_ws(session_id, ws)
 
     try:
         while True:
-            data = await ws.receive_json()
+            try:
+                data = await ws.receive_json()
+            except Exception:
+                raw = await ws.receive_text()
+                logger.warning(f"[{session_id}] Invalid JSON received: {raw[:50]}")
+                await ws.send_json(
+                    {
+                        "type": "error",
+                        "message": 'Invalid JSON. Use: {"type": "message", "content": "..."}',
+                    }
+                )
+                continue
+
             msg_type = data.get("type")
 
             if msg_type == "message":
                 content = data.get("content", "")
                 logger.info(f"[{session_id}] Chat message: {content[:100]}")
 
-                # Forward al pipeline para que el agente responda
-                # TODO: Integrate with pipeline
                 await ws.send_json(
                     {
                         "type": "status",
-                        "state": "thinking",
+                        "state": "processing",
                     }
                 )
 
+                try:
+                    await session_manager._redis.publish(
+                        f"session:{session_id}:chat",
+                        json.dumps({"type": "message", "content": content}),
+                    )
+                except Exception as e:
+                    logger.error(f"[{session_id}] Failed to publish chat: {e}")
+                    await ws.send_json(
+                        {"type": "error", "message": "Pipeline no disponible"}
+                    )
+
             elif msg_type == "typing":
-                # Cliente está escribiendo
                 logger.debug(f"[{session_id}] User typing")
 
     except WebSocketDisconnect:
@@ -381,7 +445,7 @@ async def session_chat_websocket(session_id: str, ws: WebSocket):
     except Exception as e:
         logger.error(f"[{session_id}] Chat error: {e}")
     finally:
-        session_manager.disconnect_ws(session_id, ws, is_chat=True)
+        session_manager.disconnect_ws(session_id, ws)
 
 
 @router.websocket("/{session_id}/audio")
@@ -391,23 +455,43 @@ async def session_audio_websocket(session_id: str, ws: WebSocket):
     Usa FastAPIWebsocketTransport para correr el pipeline completo:
     CLIENTE → WebSocket → STT → LLM → TTS → WebSocket → CLIENTE
     """
+    logger.info(f"[WS audio] session_id={session_id}")
     session = await session_manager.get_session(session_id)
+    logger.info(f"[WS audio] session found: {session is not None}")
     if not session:
+        logger.warning(f"[WS audio] Session not found: {session_id}")
         await ws.close(code=4004, reason="Session not found")
+        return
+
+    if session.get("provider") != "websocket":
+        logger.warning(
+            f"[WS audio] Session {session_id} provider={session.get('provider')}, expected 'websocket'"
+        )
+        await ws.close(code=4003, reason="Session is not a websocket-audio session")
         return
 
     await ws.accept()
 
+    # Si hay un handler colgado de un intento previo, libéralo antes de re-registrar.
+    if task_manager.get_task(session_id) is not None:
+        await task_manager.remove(session_id)
+    await task_manager.add(session_id, asyncio.current_task())
     try:
         config = AgentConfig.model_validate_json(session["config"])
         config.agent_id = session.get("agent_id", "default")
 
-        from pipecat.transports.fastapi_websocket import (
+        from pipecat.transports.network.fastapi_websocket import (
             FastAPIWebsocketTransport,
             FastAPIWebsocketParams,
         )
         from pipecat.audio.vad.silero import SileroVADAnalyzer
         from pipecat.audio.vad.vad_analyzer import VADParams
+        from pipecat.serializers.base_serializer import FrameSerializer
+        from pipecat.frames.frames import (
+            Frame,
+            InputAudioRawFrame,
+            OutputAudioRawFrame,
+        )
 
         sample_rate = 16000
         vad_params = VADParams(
@@ -418,22 +502,43 @@ async def session_audio_websocket(session_id: str, ws: WebSocket):
         )
         vad_analyzer = SileroVADAnalyzer(params=vad_params)
 
+        class RawPCMSerializer(FrameSerializer):
+            """Pasa audio PCM int16 mono crudo en ambos sentidos.
+
+            FastAPIWebsocketTransport descarta audio si serializer is None
+            (pipecat 0.0.108 fastapi.py L303-304 / L493-494).
+            """
+
+            def __init__(self, sr: int):
+                super().__init__()
+                self._sr = sr
+
+            async def serialize(self, frame: Frame):
+                if isinstance(frame, OutputAudioRawFrame):
+                    return frame.audio
+                return None
+
+            async def deserialize(self, data):
+                if isinstance(data, (bytes, bytearray)):
+                    return InputAudioRawFrame(
+                        audio=bytes(data),
+                        sample_rate=self._sr,
+                        num_channels=1,
+                    )
+                return None
+
         params = FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
             audio_in_sample_rate=sample_rate,
             audio_out_sample_rate=sample_rate,
+            vad_enabled=True,
+            vad_analyzer=vad_analyzer,
             add_wav_header=False,
+            serializer=RawPCMSerializer(sample_rate),
         )
 
         transport = FastAPIWebsocketTransport(websocket=ws, params=params)
-
-        @transport.event_handler("on_client_connected")
-        async def on_client_connected(transport, ws):
-            logger.info(f"[{session_id}] Client connected to audio WS")
-            await ws.send_text(json.dumps({"type": "started"}))
-
-        @transport.event_handler("on_client_disconnected")
-        async def on_client_disconnected(transport, ws):
-            logger.info(f"[{session_id}] Client disconnected from audio WS")
 
         from app.services.agents.pipelines.context_setup import setup_context
         from app.services.agents.factory.builder import ServiceFactory
@@ -441,7 +546,7 @@ async def session_audio_websocket(session_id: str, ws: WebSocket):
         stt = ServiceFactory.create_stt_service(config)
         llm = ServiceFactory.create_llm_service(config)
         tts = ServiceFactory.create_tts_service(config)
-        context_aggregator = setup_context(session_id, config, vad_analyzer)
+        _llm_context, context_aggregator = setup_context(session_id, config, vad_analyzer)
 
         from app.services.agents.pipelines.pipeline_builder import build_pipeline
 
@@ -455,12 +560,25 @@ async def session_audio_websocket(session_id: str, ws: WebSocket):
         )
 
         from pipecat.pipeline.task import PipelineTask, PipelineParams
+        from pipecat.frames.frames import LLMRunFrame
 
         task = PipelineTask(
             pipeline, params=PipelineParams(allow_interruptions_by_all=True)
         )
-        runner = pipecat.pipeline.runner.PipelineRunner()
 
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, ws):
+            logger.info(f"[{session_id}] Client connected to audio WS")
+            await ws.send_text(json.dumps({"type": "started"}))
+            # Disparar el primer turno del LLM para que el bot hable primero.
+            # Esto desbloquea las mute strategies tipo MuteUntilFirstBotComplete.
+            await task.queue_frames([LLMRunFrame()])
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, ws):
+            logger.info(f"[{session_id}] Client disconnected from audio WS")
+
+        runner = pipecat.pipeline.runner.PipelineRunner()
         await runner.run(task)
 
     except WebSocketDisconnect:
@@ -472,4 +590,9 @@ async def session_audio_websocket(session_id: str, ws: WebSocket):
         except:
             pass
     finally:
-        await ws.close()
+        await task_manager.remove(session_id)
+        await session_manager.delete_session(session_id)
+        try:
+            await ws.close()
+        except Exception:
+            pass

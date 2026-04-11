@@ -132,17 +132,26 @@ def get_sample_rate(codec: str) -> int:
 
 @router.websocket("/media/{connection_id}")
 async def websocket_media(websocket: WebSocket, connection_id: str):
-    """WebSocket endpoint for Asterisk chan_websocket.
+    """
+    WebSocket para Asterisk chan_websocket (Asterisk 20.18+, 22.8+, 23.2+).
 
-    Asterisk dials to a SIP URI and Asterisk connects here via WebSocket.
-    The first message from Asterisk is MEDIA_START with connection details.
+    ## Asterisk Dialplan
+    ```asterisk
+    ; Inbound (Asterisk espera conexión)
+    exten => _X.,1,Dial(WebSocket/INCOMING/c(ulaw)n)
 
-    Usage:
-        # Asterisk dialplan:
-        exten = _X.,1,Dial(WebSocket/INCOMING/c(ulaw)n)
+    ; Outbound (Asterisk conecta a nosotros)
+    exten => _X.,1,Dial(WebSocket/connection1/c(ulaw))
+    ```
 
-        # Or for outbound (Asterisk connects to us):
-        exten = _X.,1,Dial(WebSocket/connection1/c(ulaw))
+    ## Protocolo
+    - TEXT frames: JSON commands/events
+    - BINARY frames: Audio PCM (ulaw/alaw/opus/slin16)
+
+    ## Eventos
+    - MEDIA_START: Conexión iniciada
+    - MEDIA_XOFF/XON: Flow control
+    - DTMF_END: DTMF recibido
     """
     await websocket.accept(subprotocol="websocket")
 
@@ -324,5 +333,3 @@ async def sip_health():
         if _websocket_server
         else 0,
     }
-
-

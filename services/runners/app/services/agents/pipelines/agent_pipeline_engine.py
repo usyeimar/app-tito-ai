@@ -61,6 +61,8 @@ class AgentPipelineEngine:
         self.transport = None
         self.task = None
         self.runner = None
+        self.llm_context = None
+        self.context_aggregator = None
 
         # Lógica de Negocio
         self.tools_handler = AgentTools(agent_id=self.config.agent_id)
@@ -120,9 +122,11 @@ class AgentPipelineEngine:
             llm = ServiceFactory.create_llm_service(self.config)
             tts = ServiceFactory.create_tts_service(self.config)
 
-            context_aggregator = setup_context(
+            llm_context, context_aggregator = setup_context(
                 self.session_id, self.config, vad_analyzer
             )
+            self.llm_context = llm_context
+            self.context_aggregator = context_aggregator
 
             # 2. Configurar RTVI
             rtvi = self._setup_rtvi(stt, llm, tts)
@@ -221,60 +225,84 @@ class AgentPipelineEngine:
             )
 
     async def _control_listener(self):
-        """Escucha comandos de control (ej: stop) desde Redis."""
+        """Escucha comandos de control y mensajes de chat desde Redis."""
         pubsub = session_manager._redis.pubsub()
         await pubsub.subscribe(f"session:{self.session_id}:control")
+        await pubsub.subscribe(f"session:{self.session_id}:chat")
 
         try:
             async for message in pubsub.listen():
                 if message["type"] == "message":
+                    channel = message["channel"]
                     data = json.loads(message["data"])
-                    if data.get("action") == "stop":
-                        logger.info(f"[{self.session_id}] Remote stop command received")
-                        if self.task:
-                            await self.task.queue_frames([EndFrame()])
-                        break
+
+                    if channel.endswith(":control"):
+                        if data.get("action") == "stop":
+                            logger.info(
+                                f"[{self.session_id}] Remote stop command received"
+                            )
+                            if self.task:
+                                await self.task.queue_frames([EndFrame()])
+                            break
+
+                    if channel.endswith(":chat"):
+                        content = data.get("content", "")
+                        if content and self.llm_context is not None and self.task:
+                            self.llm_context.add_message(
+                                {"role": "user", "content": content}
+                            )
+                            await self.task.queue_frames([LLMRunFrame()])
+                            logger.info(
+                                f"[{self.session_id}] Chat message injected: {content[:50]}"
+                            )
+
         except Exception as e:
             logger.error(f"[{self.session_id}] Control listener error: {e}")
         finally:
             await pubsub.unsubscribe(f"session:{self.session_id}:control")
+            await pubsub.unsubscribe(f"session:{self.session_id}:chat")
             await pubsub.close()
 
     def _setup_rtvi(self, stt, llm, tts) -> RTVIProcessor:
-        # En RTVI, los nombres de los servicios deben ser 'stt', 'llm' y 'tts'
-        # para que coincidan con las peticiones del cliente (client-ready)
-        services = {{"stt": stt, "llm": llm, "tts": tts}}
+        services = {"stt": stt, "llm": llm, "tts": tts}
 
         rtvi = RTVIProcessor(
             config=RTVIConfig(
                 config=[
                     RTVIServiceConfig(
-                        service="stt", options=[{{"name": "model", "value": "nova-2"}}]
+                        service="stt",
+                        options=[
+                            {
+                                "name": "model",
+                                "value": self.config.runtime_profiles.stt.model,
+                            }
+                        ],
                     ),
                     RTVIServiceConfig(
                         service="tts",
                         options=[
                             {
-                                {
-                                    "name": "voice",
-                                    "value": "79a125e8-cd45-4c13-8a67-188112f4dd22",
-                                }
+                                "name": "voice",
+                                "value": self.config.runtime_profiles.tts.voice_id,
                             }
                         ],
                     ),
                     RTVIServiceConfig(
-                        service="llm", options=[{{"name": "model", "value": "gpt-4o"}}]
+                        service="llm",
+                        options=[
+                            {"name": "model", "value": self.config.brain.llm.model}
+                        ],
                     ),
                 ]
             )
         )
 
-        # Registrar los servicios explícitamente si el constructor no los tomó
-        for name, service in services.items():
-            rtvi.register_service(name, service)
+        # Registrar los servicios explícitamente (RTVI detecta el tipo por la clase)
+        for service in services.values():
+            rtvi.register_service(service)
 
         async def handle_request_chat_history(rtvi, action):
-            return {{"status": "ok", "history": []}}
+            return {"status": "ok", "history": []}
 
         rtvi.register_action(
             RTVIAction(
@@ -466,7 +494,7 @@ class AgentPipelineEngine:
                 },
             )
             # Inyectar en el contexto para que el LLM lo sepa
-            await context_aggregator.context.add_message(
+            self.llm_context.add_message(
                 {
                     "role": "system",
                     "content": f"USER_DTMF_INPUT: {digit}. El usuario ha presionado la tecla {digit} en su teclado telefónico. Responde acorde a esto.",
@@ -516,7 +544,7 @@ class AgentPipelineEngine:
         @self.task.event_handler("on_pipeline_finished")
         async def on_pipeline_finished(task, frame):
             # Obtener transcripciones y enviar session.ended
-            messages = list(context_aggregator.context.messages)
+            messages = list(self.llm_context.messages)
             duration = time.monotonic() - self.start_time
 
             # Guardar grabacion si el buffer esta activo

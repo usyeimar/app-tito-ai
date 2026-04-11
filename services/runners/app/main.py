@@ -120,6 +120,12 @@ from app.core.errors import setup_exception_handlers
 from app.api.v1.api import api_router
 from app.schemas.errors import APIErrorResponse
 
+
+def setup_websocket_docs(app: FastAPI):
+    """Add WebSocket endpoints to OpenAPI spec."""
+    return None  # Disable for now - causes issues
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url="/api/v1/openapi.json",
@@ -130,34 +136,61 @@ app = FastAPI(
     description="""
 ## Tito AI Runners API
 
-Servicio de orquestacion de **agentes conversacionales de voz en tiempo real**.
+Plataforma de orquestación de **agentes conversacionales de voz en tiempo real**.
 
-### Que hace este servicio?
+### Endpoints Principales
 
-1. Recibe una configuracion de agente (`AgentConfig`) via POST.
-2. Crea una sala WebRTC en **Daily.co** o **LiveKit**.
-3. Lanza un pipeline de IA: **STT** (Speech-to-Text) → **LLM** → **TTS** (Text-to-Speech).
-4. Devuelve credenciales para que el cliente se conecte y hable con el agente.
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/api/v1/sessions/` | Crear nueva sesión de agente de voz |
+| GET | `/api/v1/sessions/` | Listar sesiones activas |
+| GET | `/api/v1/sessions/{id}` | Obtener estado de sesión |
+| DELETE | `/api/v1/sessions/{id}` | Terminar sesión |
+| GET | `/api/v1/sessions/{id}/transcript` | WebSocket para transcripciones |
+| GET | `/api/v1/sessions/{id}/chat` | WebSocket para chat de texto |
+| GET | `/api/v1/sessions/{id}/audio` | WebSocket para audio PCM directo |
+| GET | `/api/v1/metrics/` | Métricas Prometheus |
+| GET | `/api/v1/sip/` | Endpoints SIP |
+| GET | `/health` | Health check |
 
-### Flujo principal
+### Flujo Principal
 
 ```
-Cliente → POST /api/v1/sessions → Runner crea sala + pipeline → Cliente se une con token
+Cliente → POST /api/v1/sessions/ → Runner crea sala + pipeline → Cliente se une con token
 ```
 
-### Proveedores soportados
+### Proveedores Soportados
 
 | Componente | Proveedores |
 |------------|-------------|
 | **LLM** | OpenAI, Anthropic, Google, Groq, Together, Mistral |
 | **STT** | Deepgram, Google, Gladia, AssemblyAI, AWS |
 | **TTS** | Cartesia, ElevenLabs, Deepgram, PlayHT, Azure |
-| **WebRTC** | Daily.co, LiveKit |
+| **WebRTC** | Daily.co, LiveKit, WebSocket Directo |
 
-### Eventos en tiempo real
+### WebSockets en Tiempo Real
 
-- **WebSocket**: `ws://host/api/v1/sessions/{session_id}/ws` para transcripciones en vivo.
-- **Webhooks**: POST a `callback_url` con eventos `session.started`, `session.ended`, `session.error`.
+| Endpoint | Propósito | Formato |
+|----------|-----------|--------|
+| `/sessions/{id}/transcript` | Transcripciones | TEXT/JSON |
+| `/sessions/{id}/chat` | Chat bidireccional | TEXT/JSON |
+| `/sessions/{id}/audio` | Audio PCM | BINARY |
+
+### SIP (Asterisk)
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `/sip/media/{connection_id}` | WebSocket para chan_websocket |
+| `/sip/calls/{call_id}` | Estado de llamada |
+| `/sip/dialplan/{workspace}` | Reglas de dialplan |
+| `/sip/health` | Health check SIP |
+
+### Eventos (Webhooks)
+
+- `session.started` - Sesión iniciada
+- `session.ended` - Sesión terminada  
+- `session.error` - Error en sesión
+- `transcript.final` - Transcripción final
     """,
     contact={
         "name": "Tito AI Team",
@@ -169,21 +202,27 @@ Cliente → POST /api/v1/sessions → Runner crea sala + pipeline → Cliente se
     openapi_tags=[
         {
             "name": "Sessions",
-            "description": "Gestion del ciclo de vida de sesiones de agentes de voz. Crear, listar y terminar sesiones.",
+            "description": "Gestión del ciclo de vida de sesiones de agentes de voz. Crear, listar, terminar y WebSockets.",
         },
         {
             "name": "SIP Trunks",
-            "description": "Gestion de SIP Trunks para conectar PBXes externas a agentes de voz. "
-            "Soporta modo inbound (la PBX te llama), register (te registras en la PBX del cliente) "
-            "y outbound (originar llamadas salientes via carrier SIP).",
+            "description": "Gestión de SIP Trunks para conectar PBX externas a agentes de voz. Modos: inbound, register, outbound.",
+        },
+        {
+            "name": "SIP",
+            "description": "Integración con Asterisk via AudioSocket/WebSocket. Gestión de llamadas, dialplan y transcoding.",
         },
         {
             "name": "Metrics",
-            "description": "Metricas Prometheus para monitoreo y alertas.",
+            "description": "Métricas Prometheus para monitoreo y alertas.",
         },
         {
             "name": "Health",
             "description": "Health checks para Kubernetes y load balancers.",
+        },
+        {
+            "name": "Deployments",
+            "description": "Gestión de despliegues de agentes.",
         },
     ],
     responses={
@@ -214,6 +253,9 @@ Cliente → POST /api/v1/sessions → Runner crea sala + pipeline → Cliente se
 # Setup global exception handlers
 setup_exception_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
+
+# Add WebSocket documentation to OpenAPI
+setup_websocket_docs(app)
 
 
 @app.get(

@@ -26,6 +26,7 @@ from app.schemas.agent import AgentConfig
 
 logger = logging.getLogger(__name__)
 
+
 def render_bot_prompt(session_id: str, config: AgentConfig) -> str:
     """Procesa el Prompt Template con Jinja2."""
     instructions_base = config.brain.llm.instructions
@@ -52,7 +53,10 @@ def render_bot_prompt(session_id: str, config: AgentConfig) -> str:
         logger.error(f"❌ Error rendering prompt: {e}")
         return instructions_base
 
-def setup_context(session_id: str, config: AgentConfig, vad_analyzer) -> LLMContextAggregatorPair:
+
+def setup_context(
+    session_id: str, config: AgentConfig, vad_analyzer
+) -> tuple[LLMContext, LLMContextAggregatorPair]:
     """Configura el contexto LLM y las estrategias de turno."""
     bot_prompt = render_bot_prompt(session_id, config)
     context = LLMContext([{"role": "system", "content": bot_prompt}])
@@ -73,22 +77,32 @@ def setup_context(session_id: str, config: AgentConfig, vad_analyzer) -> LLMCont
 
     # 2. Estrategia de Inicio de Turno
     allow_interruptions = behavior.interruptibility if behavior else True
-    turn_start_strategy = VADUserTurnStartStrategy(enable_interruptions=allow_interruptions)
+    turn_start_strategy = VADUserTurnStartStrategy(
+        enable_interruptions=allow_interruptions
+    )
 
     # 3. Estrategia de Fin de Turno
     if behavior and behavior.turn_detection_strategy == "timeout":
         timeout_secs = behavior.turn_detection_timeout_ms / 1000.0
-        turn_stop_strategy = SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=timeout_secs)
+        turn_stop_strategy = SpeechTimeoutUserTurnStopStrategy(
+            user_speech_timeout=timeout_secs
+        )
     else:
         stop_secs = behavior.smart_turn_stop_secs if behavior else 2.0
-        turn_analyzer = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=stop_secs))
-        turn_stop_strategy = TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer)
+        turn_analyzer = LocalSmartTurnAnalyzerV3(
+            params=SmartTurnParams(stop_secs=stop_secs)
+        )
+        turn_stop_strategy = TurnAnalyzerUserTurnStopStrategy(
+            turn_analyzer=turn_analyzer
+        )
 
     # 4. Gestión de Contexto (Summarization)
     assistant_params = LLMAssistantAggregatorParams()
     context_config = config.brain.context
     if context_config.enabled and context_config.strategy != "none":
-        summarization_prompt = "Resume la conversación de forma muy breve para conservar contexto."
+        summarization_prompt = (
+            "Resume la conversación de forma muy breve para conservar contexto."
+        )
         if context_config.strategy == "truncate":
             summarization_prompt = "Olvida los mensajes antiguos y mantén solo los puntos clave de forma ultra-resumida."
 
@@ -96,8 +110,7 @@ def setup_context(session_id: str, config: AgentConfig, vad_analyzer) -> LLMCont
             enable_auto_context_summarization=True,
             auto_context_summarization_config=LLMAutoContextSummarizationConfig(
                 max_context_tokens=context_config.max_tokens,
-                min_messages_after_summary=context_config.min_messages,
-                summarization_system_prompt=summarization_prompt,
+                max_unsummarized_messages=context_config.min_messages,
             ),
         )
 
@@ -112,5 +125,5 @@ def setup_context(session_id: str, config: AgentConfig, vad_analyzer) -> LLMCont
         ),
         assistant_params=assistant_params,
     )
-    
-    return context_aggregator
+
+    return context, context_aggregator

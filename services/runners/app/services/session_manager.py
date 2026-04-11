@@ -46,6 +46,7 @@ class SessionManager:
             "host_id": settings.HOST_ID,
             "room_name": room_name or existing.get("room_name"),
             "provider": provider or existing.get("provider"),
+            "config": config.model_dump_json(),
             "status": "running",
             "created_at": existing.get("created_at", time.time()),
             "updated_at": time.time(),

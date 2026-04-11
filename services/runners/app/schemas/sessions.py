@@ -5,26 +5,43 @@ from typing import Optional, List, Dict, Any
 
 class SessionContext(BaseModel):
     """Metadatos de contexto de la sesion."""
-    agent_id: str = Field(..., description="ID del agente ejecutandose.", examples=["alloy-mvp-001"])
-    tenant_id: str = Field(..., description="Organizacion propietaria.", examples=["tenant-abc-123"])
-    created_at: float = Field(default_factory=time.time, description="Timestamp Unix de creacion.")
-    expires_at: Optional[float] = Field(None, description="Timestamp Unix de expiracion del token.")
+
+    agent_id: str = Field(
+        ..., description="ID del agente ejecutandose.", examples=["alloy-mvp-001"]
+    )
+    tenant_id: str = Field(
+        ..., description="Organizacion propietaria.", examples=["tenant-abc-123"]
+    )
+    created_at: float = Field(
+        default_factory=time.time, description="Timestamp Unix de creacion."
+    )
+    expires_at: Optional[float] = Field(
+        None, description="Timestamp Unix de expiracion del token."
+    )
 
 
 class SessionLink(BaseModel):
     """Objeto de enlace para navegación HATEOAS en sesiones."""
+
     href: str = Field(..., description="URL del recurso.")
     method: str = Field(..., description="Método HTTP.")
+
 
 class SessionResponse(BaseModel):
     """
     Respuesta de creacion de sesion con soporte HATEOAS.
     """
+
     session_id: str = Field(..., description="ID unico de la sesion.")
     room_name: str = Field(..., description="Nombre tecnico de la sala WebRTC.")
     provider: str = Field(..., description="Proveedor de transporte WebRTC.")
-    url: str = Field(..., description="URL de acceso a la sala.")
-    access_token: str = Field(..., description="Token JWT para unirse.")
+    ws_url: Optional[str] = Field(
+        None, description="URL WebSocket (wss://) para conectar al room."
+    )
+    playground_url: Optional[str] = Field(
+        None, description="URL del LiveKit Playground para probar el bot."
+    )
+    access_token: Optional[str] = Field(None, description="Token JWT para unirse.")
     context: SessionContext
     links: Dict[str, SessionLink] = Field(default_factory=dict, alias="_links")
 
@@ -44,16 +61,27 @@ class SessionResponse(BaseModel):
                     "expires_at": 1712448400.0,
                 },
                 "_links": {
-                    "self": {"href": "/api/v1/sessions/sess_a1b2c3d4e5f6", "method": "GET"},
-                    "stop": {"href": "/api/v1/sessions/sess_a1b2c3d4e5f6", "method": "DELETE"},
-                    "ws": {"href": "ws://host/api/v1/sessions/sess_a1b2c3d4e5f6/ws", "method": "GET"}
-                }
+                    "self": {
+                        "href": "/api/v1/sessions/sess_a1b2c3d4e5f6",
+                        "method": "GET",
+                    },
+                    "stop": {
+                        "href": "/api/v1/sessions/sess_a1b2c3d4e5f6",
+                        "method": "DELETE",
+                    },
+                    "ws": {
+                        "href": "ws://host/api/v1/sessions/sess_a1b2c3d4e5f6/ws",
+                        "method": "GET",
+                    },
+                },
             }
-        }
+        },
     )
+
 
 class SessionListResponse(BaseModel):
     """Lista de sesiones activas con soporte HATEOAS."""
+
     sessions: List[Dict[str, Any]] = Field(default_factory=list)
     count: int = Field(..., description="Numero total de sesiones activas.")
     status: str = Field(..., description="Estado operativo del runner.")
@@ -68,27 +96,30 @@ class SessionListResponse(BaseModel):
                 "status": "OPERATIONAL",
                 "_links": {
                     "self": {"href": "/api/v1/sessions", "method": "GET"},
-                    "create": {"href": "/api/v1/sessions", "method": "POST"}
-                }
+                    "create": {"href": "/api/v1/sessions", "method": "POST"},
+                },
             }
-        }
+        },
     )
 
 
 class ActionResponse(BaseModel):
     """Respuesta generica de accion exitosa."""
-    success: bool = Field(..., description="Indica si la operacion fue exitosa.", examples=[True])
+
+    success: bool = Field(
+        ..., description="Indica si la operacion fue exitosa.", examples=[True]
+    )
     message: str = Field(
         ...,
         description="Mensaje descriptivo del resultado.",
-        examples=["Sesion sess_a1b2c3d4e5f6 terminada exitosamente."]
+        examples=["Sesion sess_a1b2c3d4e5f6 terminada exitosamente."],
     )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "success": True,
-                "message": "Sesion sess_a1b2c3d4e5f6 terminada exitosamente."
+                "message": "Sesion sess_a1b2c3d4e5f6 terminada exitosamente.",
             }
         }
     )
