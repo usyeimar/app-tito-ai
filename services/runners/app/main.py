@@ -1,9 +1,15 @@
 import logging
 import sys
+import warnings
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from app.services.task_manager import task_manager
+
+# Suppress deprecation warnings from external libraries
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning, module="websockets")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pipecat")
 
 load_dotenv()
 
@@ -31,7 +37,9 @@ async def lifespan(app: FastAPI):
     ami_controller = None
 
     if _settings.SIP_ENABLED:
-        logger.info("SIP Bridge enabled — starting AudioSocket server and AMI controller")
+        logger.info(
+            "SIP Bridge enabled — starting AudioSocket server and AMI controller"
+        )
         from app.services.sip.audiosocket_server import AudioSocketServer
         from app.services.sip.ami_controller import AMIController
         from app.services.sip.call_handler import SIPCallHandler
@@ -55,12 +63,15 @@ async def lifespan(app: FastAPI):
                 await ami_controller.connect()
                 logger.info("AMI controller connected")
             except Exception as e:
-                logger.warning(f"AMI connection failed (calls will still work via AudioSocket): {e}")
+                logger.warning(
+                    f"AMI connection failed (calls will still work via AudioSocket): {e}"
+                )
                 ami_controller = None
 
         # Inject AMI into trunk_service for outbound origination
         if ami_controller:
             from app.services.trunk_service import trunk_service as _trunk_service
+
             _trunk_service.set_ami_controller(ami_controller)
 
         # Wire up the call handler
@@ -79,17 +90,17 @@ async def lifespan(app: FastAPI):
 
     # Shutdown — uvicorn triggers this on SIGINT/SIGTERM
     logger.info("Application shutting down gracefully...")
-    
+
     # 0.3 Graceful Shutdown: notify and stop all sessions
     from app.services.session_manager import session_manager
-    
+
     logger.info(f"shutdown_started | active_sessions: {task_manager.count()}")
-    
+
     # Notify all connected WebSocket clients before closing
     await session_manager.broadcast(
         {"event": "server.shutdown", "message": "Server is shutting down"}
     )
-    
+
     # Stop all asyncio Tasks
     await task_manager.stop_all()
 
@@ -102,6 +113,7 @@ async def lifespan(app: FastAPI):
         logger.info("AMI controller disconnected")
 
     logger.info("Application shutdown complete.")
+
 
 from app.core.config import settings
 from app.core.errors import setup_exception_handlers
@@ -175,18 +187,34 @@ Cliente → POST /api/v1/sessions → Runner crea sala + pipeline → Cliente se
         },
     ],
     responses={
-        400: {"model": APIErrorResponse, "description": "Bad Request - Request malformado"},
-        401: {"model": APIErrorResponse, "description": "Unauthorized - Sin autenticacion"},
+        400: {
+            "model": APIErrorResponse,
+            "description": "Bad Request - Request malformado",
+        },
+        401: {
+            "model": APIErrorResponse,
+            "description": "Unauthorized - Sin autenticacion",
+        },
         403: {"model": APIErrorResponse, "description": "Forbidden - Sin permisos"},
-        404: {"model": APIErrorResponse, "description": "Not Found - Recurso no encontrado"},
-        422: {"model": APIErrorResponse, "description": "Validation Error - Campos requeridos faltantes o tipos invalidos"},
-        500: {"model": APIErrorResponse, "description": "Internal Server Error - Error inesperado del servidor"},
+        404: {
+            "model": APIErrorResponse,
+            "description": "Not Found - Recurso no encontrado",
+        },
+        422: {
+            "model": APIErrorResponse,
+            "description": "Validation Error - Campos requeridos faltantes o tipos invalidos",
+        },
+        500: {
+            "model": APIErrorResponse,
+            "description": "Internal Server Error - Error inesperado del servidor",
+        },
     },
 )
 
 # Setup global exception handlers
 setup_exception_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
+
 
 @app.get(
     "/health",
@@ -224,8 +252,11 @@ async def health():
         result["sip"] = {
             "enabled": True,
             "audiosocket": {
-                "listening": audiosocket is not None and audiosocket._server is not None,
-                "active_connections": len(audiosocket.connections) if audiosocket else 0,
+                "listening": audiosocket is not None
+                and audiosocket._server is not None,
+                "active_connections": len(audiosocket.connections)
+                if audiosocket
+                else 0,
             },
             "ami": {
                 "connected": ami.connected if ami else False,

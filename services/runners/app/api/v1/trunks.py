@@ -34,7 +34,9 @@ def get_trunk_links(request: Request, trunk_id: str, mode: str) -> dict:
         "self": TrunkLink(href=trunk_path, method="GET"),
         "update": TrunkLink(href=trunk_path, method="PATCH"),
         "delete": TrunkLink(href=trunk_path, method="DELETE"),
-        "rotate_credentials": TrunkLink(href=f"{trunk_path}/rotate-credentials", method="POST"),
+        "rotate_credentials": TrunkLink(
+            href=f"{trunk_path}/rotate-credentials", method="POST"
+        ),
     }
 
     if mode == "inbound":
@@ -102,7 +104,9 @@ async def create_trunk(request_body: CreateTrunkRequest, request: Request):
 )
 async def list_trunks(
     request: Request,
-    workspace_slug: str = Query(..., description="Slug del workspace.", example="alloy-finance"),
+    workspace_slug: str = Query(
+        ..., description="Slug del workspace.", examples=["alloy-finance"]
+    ),
 ):
     """
     Lista todos los SIP Trunks de un workspace.
@@ -118,7 +122,10 @@ async def list_trunks(
         trunks=trunks,
         count=len(trunks),
         _links={
-            "self": TrunkLink(href=f"{base_url}/api/v1/trunks?workspace_slug={workspace_slug}", method="GET"),
+            "self": TrunkLink(
+                href=f"{base_url}/api/v1/trunks?workspace_slug={workspace_slug}",
+                method="GET",
+            ),
             "create": TrunkLink(href=f"{base_url}/api/v1/trunks", method="POST"),
         },
     )
@@ -133,7 +140,9 @@ async def list_trunks(
 )
 async def get_trunk(
     request: Request,
-    trunk_id: str = Path(..., description="ID del trunk.", example="trk_a1b2c3d4e5f6"),
+    trunk_id: str = Path(
+        ..., description="ID del trunk.", examples=["trk_a1b2c3d4e5f6"]
+    ),
 ):
     """Obtiene los datos de un SIP Trunk por ID. Los passwords se enmascaran."""
     trunk = await trunk_service.get_trunk(trunk_id)
@@ -189,7 +198,9 @@ async def delete_trunk(trunk_id: str = Path(...)):
     if not deleted:
         raise HTTPException(status_code=404, detail="Trunk no encontrado.")
 
-    return ActionResponse(success=True, message=f"Trunk {trunk_id} eliminado exitosamente.")
+    return ActionResponse(
+        success=True, message=f"Trunk {trunk_id} eliminado exitosamente."
+    )
 
 
 # ── Rutas (solo mode=inbound) ────────────────────────────────────────────────
@@ -246,7 +257,7 @@ async def add_route(
 )
 async def remove_route(
     trunk_id: str = Path(...),
-    extension: str = Path(..., description="Extensión a eliminar.", example="100"),
+    extension: str = Path(..., description="Extensión a eliminar.", examples=["100"]),
 ):
     """Elimina una ruta extensión→agente de un trunk inbound."""
     try:
@@ -336,7 +347,9 @@ async def originate_call(
     except ValueError as e:
         msg = str(e)
         if "Límite" in msg:
-            raise HTTPException(status_code=429, detail=msg, headers={"Retry-After": "10"})
+            raise HTTPException(
+                status_code=429, detail=msg, headers={"Retry-After": "10"}
+            )
         if "no está activo" in msg or "solo es válido" in msg:
             raise HTTPException(status_code=400, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
@@ -373,9 +386,15 @@ async def list_calls(
         count=len(calls),
         trunk_id=trunk_id,
         _links={
-            "self": TrunkLink(href=f"{base_url}/api/v1/trunks/{trunk_id}/calls", method="GET"),
-            "create": TrunkLink(href=f"{base_url}/api/v1/trunks/{trunk_id}/calls", method="POST"),
-            "trunk": TrunkLink(href=f"{base_url}/api/v1/trunks/{trunk_id}", method="GET"),
+            "self": TrunkLink(
+                href=f"{base_url}/api/v1/trunks/{trunk_id}/calls", method="GET"
+            ),
+            "create": TrunkLink(
+                href=f"{base_url}/api/v1/trunks/{trunk_id}/calls", method="POST"
+            ),
+            "trunk": TrunkLink(
+                href=f"{base_url}/api/v1/trunks/{trunk_id}", method="GET"
+            ),
         },
     )
 

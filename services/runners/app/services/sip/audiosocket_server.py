@@ -2,14 +2,21 @@
 
 Implements the AudioSocket protocol used by Asterisk's chan_audiosocket.
 When a call arrives, Asterisk opens a TCP connection and streams bidirectional
-raw audio (signed linear 16-bit, 16kHz, mono).
+raw audio (signed linear 16-bit, various sample rates).
 
-Protocol:
+Protocol (per https://docs.asterisk.org/Configuration/Channel-Drivers/AudioSocket/):
     Each frame: [type:1 byte][length:2 bytes big-endian][payload:N bytes]
 
-    Type 0x00 = Hangup (no payload)
-    Type 0x01 = UUID   (payload = 36-byte channel UUID)
-    Type 0x10 = Audio  (payload = raw slin16, typically 320 bytes = 20ms)
+    Types:
+        0x00 - Hangup (no payload)
+        0x01 - UUID (16-byte binary channel UUID)
+        0x03 - DTMF (1-byte ascii digit)
+        0x10-0x18 - Audio (different sample rates)
+        0xff - Error (optional error code)
+
+Sample rates:
+        0x10 = 8kHz,  0x11 = 12kHz,  0x12 = 16kHz,  0x13 = 24kHz
+        0x14 = 32kHz, 0x15 = 44.1kHz, 0x16 = 48kHz, 0x17 = 96kHz, 0x18 = 192kHz
 """
 
 import asyncio
@@ -23,11 +30,29 @@ logger = logging.getLogger(__name__)
 # AudioSocket frame types
 AUDIOSOCKET_TYPE_HANGUP = 0x00
 AUDIOSOCKET_TYPE_UUID = 0x01
-AUDIOSOCKET_TYPE_AUDIO = 0x10
+AUDIOSOCKET_TYPE_DTMF = 0x03
+AUDIOSOCKET_TYPE_AUDIO_BASE = 0x10
 
-# slin16: 16kHz, 16-bit signed linear, mono → 320 bytes = 20ms
+# Extended audio types (different sample rates)
+AUDIO_SAMPLE_RATES = {
+    0x10: (8000, 160, "slin8"),  # 8kHz, 160 bytes = 20ms
+    0x11: (12000, 240, "slin12"),  # 12kHz
+    0x12: (16000, 320, "slin16"),  # 16kHz (default)
+    0x13: (24000, 480, "slin24"),  # 24kHz
+    0x14: (32000, 640, "slin32"),  # 32kHz
+    0x15: (44100, 882, "slin44"),  # 44.1kHz
+    0x16: (48000, 960, "slin48"),  # 48kHz
+    0x17: (96000, 1920, "slin96"),  # 96kHz
+    0x18: (192000, 3840, "slin192"),  # 192kHz
+}
+
+# Default: 16kHz, 16-bit signed linear, mono → 320 bytes = 20ms
+AUDIOSOCKET_TYPE_AUDIO = 0x12  # slin16
 AUDIO_SAMPLE_RATE = 16000
 AUDIO_FRAME_SIZE = 320  # 20ms at 16kHz, 16-bit
+
+# Error type
+AUDIOSOCKET_TYPE_ERROR = 0xFF
 
 
 @dataclass
@@ -46,7 +71,9 @@ class AudioSocketConnection:
         if not self.connected:
             return False
         try:
-            frame = struct.pack("!BH", AUDIOSOCKET_TYPE_AUDIO, len(audio_data)) + audio_data
+            frame = (
+                struct.pack("!BH", AUDIOSOCKET_TYPE_AUDIO, len(audio_data)) + audio_data
+            )
             self.writer.write(frame)
             await self.writer.drain()
             return True
@@ -66,6 +93,29 @@ class AudioSocketConnection:
             await self.writer.drain()
         except (ConnectionError, OSError):
             pass
+
+    async def send_dtmf(self, digit: str) -> bool:
+        """Send a DTMF digit to Asterisk."""
+        if not self.connected:
+            return False
+        try:
+            # DTMF is 1-byte ASCII
+            frame = struct.pack("!BH", AUDIOSOCKET_TYPE_DTMF, 1) + digit.encode("ascii")
+            self.writer.write(frame)
+            await self.writer.drain()
+            return True
+        except (ConnectionError, OSError) as e:
+            logger.warning(f"[{self.channel_uuid}] DTMF send error: {e}")
+            return False
+
+    def get_sample_rate(self) -> int:
+        """Get the sample rate for this connection (based on audio type)."""
+        # Default to 16kHz if not set
+        return AUDIO_SAMPLE_RATE
+
+    def get_audio_frame_size(self) -> int:
+        """Get the expected frame size for the sample rate."""
+        return AUDIO_FRAME_SIZE
 
     async def wait_disconnected(self):
         """Wait until the connection is closed."""
@@ -127,7 +177,9 @@ class AudioSocketServer:
             await self._server.wait_closed()
             logger.info("AudioSocket server stopped")
 
-    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _handle_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ):
         """Handle a new TCP connection from Asterisk."""
         peer = writer.get_extra_info("peername")
         peer_str = f"{peer[0]}:{peer[1]}" if peer else "unknown"

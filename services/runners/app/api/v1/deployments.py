@@ -4,10 +4,10 @@ import json
 from fastapi import APIRouter, HTTPException, status, Path, Request
 from fastapi.responses import Response, HTMLResponse
 from app.schemas.deployments import (
-    SIPProvisionRequest, 
-    SIPProvisionResponse, 
-    SIPRotateKeyResponse, 
-    DeploymentLink
+    SIPProvisionRequest,
+    SIPProvisionResponse,
+    SIPRotateKeyResponse,
+    DeploymentLink,
 )
 from app.schemas.widget import WidgetConfig, WidgetResponse
 from app.schemas.sessions import ActionResponse
@@ -17,12 +17,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.get(
     "/widget/preview-frame",
     response_class=HTMLResponse,
     summary="Frame de Previsualización del Widget",
 )
-async def get_widget_preview_frame(agent_id: str, request: Request, workspace_slug: str = None):
+async def get_widget_preview_frame(
+    agent_id: str, request: Request, workspace_slug: str = None
+):
     """
     Sirve el HTML interactivo que vive dentro del iframe del widget.
     """
@@ -30,7 +33,9 @@ async def get_widget_preview_frame(agent_id: str, request: Request, workspace_sl
     # Si no se pasa workspace_slug, buscamos en Redis por patrón (escalable para preview)
     config_data = None
     if workspace_slug:
-        config_data = await deployment_service.get_widget_config(workspace_slug, agent_id)
+        config_data = await deployment_service.get_widget_config(
+            workspace_slug, agent_id
+        )
     else:
         # Búsqueda fallback por agent_id
         keys = await deployment_service._redis.keys(f"deployment:widget:*:{agent_id}")
@@ -112,7 +117,7 @@ async def get_widget_preview_frame(agent_id: str, request: Request, workspace_sl
         const sessionData = {{
             version: "1.0.0",
             agent_id: "{agent_id}",
-            tenant_id: "{workspace_slug or 'preview'}",
+            tenant_id: "{workspace_slug or "preview"}",
             metadata: {{ 
                 name: "Luna - Travel Guru", 
                 slug: "luna-travel-guru", 
@@ -218,30 +223,39 @@ async def get_widget_preview_frame(agent_id: str, request: Request, workspace_sl
     """
     return HTMLResponse(content=html_content)
 
+
 def get_sip_links(request: Request, workspace_slug: str, agent_id: str):
     """Genera enlaces HATEOAS para un despliegue SIP."""
     base_url = str(request.base_url).rstrip("/")
     api_path = f"{base_url}/api/v1/deployments/sip/{workspace_slug}/{agent_id}"
-    
+
     return {
         "self": DeploymentLink(href=api_path, method="GET"),
         "rotate_key": DeploymentLink(href=f"{api_path}/rotate-key", method="POST"),
         "delete": DeploymentLink(href=api_path, method="DELETE"),
-        "update": DeploymentLink(href=f"{base_url}/api/v1/deployments/sip", method="POST"),
+        "update": DeploymentLink(
+            href=f"{base_url}/api/v1/deployments/sip", method="POST"
+        ),
     }
+
 
 def get_widget_links(request: Request, workspace_slug: str, agent_id: str):
     """Genera enlaces HATEOAS para un despliegue de Widget."""
     base_url = str(request.base_url).rstrip("/")
     api_path = f"{base_url}/api/v1/deployments/widget/{workspace_slug}/{agent_id}"
-    
+
     return {
         "self": DeploymentLink(href=api_path, method="GET"),
-        "embed_js": DeploymentLink(href=f"{base_url}/api/v1/deployments/widget/{agent_id}/embed.js", method="GET"),
+        "embed_js": DeploymentLink(
+            href=f"{base_url}/api/v1/deployments/widget/{agent_id}/embed.js",
+            method="GET",
+        ),
         "delete": DeploymentLink(href=api_path, method="DELETE"),
     }
 
+
 # --- SIP Endpoints ---
+
 
 @router.post(
     "/sip",
@@ -256,11 +270,16 @@ async def provision_sip_channel(request_body: SIPProvisionRequest, request: Requ
     try:
         deployment = await deployment_service.provision_sip(request_body)
         deployment["workspace_subdomain"] = f"{request_body.workspace_slug}.sip.tito.ai"
-        deployment["_links"] = get_sip_links(request, request_body.workspace_slug, request_body.agent_id)
+        deployment["_links"] = get_sip_links(
+            request, request_body.workspace_slug, request_body.agent_id
+        )
         return deployment
     except Exception as e:
         logger.error(f"❌ Failed to provision SIP: {e}")
-        raise HTTPException(status_code=500, detail="Error interno al procesar el despliegue SIP.")
+        raise HTTPException(
+            status_code=500, detail="Error interno al procesar el despliegue SIP."
+        )
+
 
 @router.get(
     "/sip/{workspace_slug}/{agent_id}",
@@ -269,16 +288,17 @@ async def provision_sip_channel(request_body: SIPProvisionRequest, request: Requ
 )
 async def get_sip_channel(
     request: Request,
-    workspace_slug: str = Path(..., example="alloy-finance"),
-    agent_id: str = Path(..., example="agent-001")
+    workspace_slug: str = Path(..., examples=["alloy-finance"]),
+    agent_id: str = Path(..., examples=["agent-001"]),
 ):
     deployment = await deployment_service.get_deployment(workspace_slug, agent_id)
     if not deployment:
         raise HTTPException(status_code=404, detail="Despliegue SIP no encontrado.")
-    
+
     deployment["workspace_subdomain"] = f"{workspace_slug}.sip.tito.ai"
     deployment["_links"] = get_sip_links(request, workspace_slug, agent_id)
     return deployment
+
 
 @router.post(
     "/sip/{workspace_slug}/{agent_id}/rotate-key",
@@ -289,14 +309,16 @@ async def rotate_sip_key(request: Request, workspace_slug: str, agent_id: str):
     try:
         new_key = await deployment_service.rotate_sip_key(workspace_slug, agent_id)
         return SIPRotateKeyResponse(
-            agent_id=agent_id, 
-            new_api_key=new_key, 
-            _links=get_sip_links(request, workspace_slug, agent_id)
+            agent_id=agent_id,
+            new_api_key=new_key,
+            _links=get_sip_links(request, workspace_slug, agent_id),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
 # --- Widget Endpoints ---
+
 
 @router.post(
     "/widget",
@@ -311,20 +333,21 @@ async def configure_widget(config: WidgetConfig, request: Request):
     try:
         data = await deployment_service.save_widget_config(config)
         base_url = str(request.base_url).rstrip("/")
-        
+
         embed_script = f'<script src="{base_url}/api/v1/deployments/widget/{config.agent_id}/embed.js" async></script>'
         preview_url = f"{base_url}/api/v1/deployments/widget/{config.workspace_slug}/{config.agent_id}/preview"
-        
+
         return WidgetResponse(
             agent_id=config.agent_id,
             config=config,
             embed_script=embed_script,
             preview_url=preview_url,
-            _links=get_widget_links(request, config.workspace_slug, config.agent_id)
+            _links=get_widget_links(request, config.workspace_slug, config.agent_id),
         )
     except Exception as e:
         logger.error(f"❌ Failed to configure widget: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get(
     "/widget/{agent_id}/embed.js",
@@ -358,24 +381,29 @@ async def get_widget_script(agent_id: str, request: Request):
     """
     return Response(content=js_content, media_type="application/javascript")
 
+
 @router.delete(
     "/{type}/{workspace_slug}/{agent_id}",
     response_model=ActionResponse,
     summary="Eliminar Despliegue",
 )
 async def delete_deployment(
-    workspace_slug: str, 
-    agent_id: str, 
-    type: str = Path(..., description="Tipo de despliegue: sip o widget")
+    workspace_slug: str,
+    agent_id: str,
+    type: str = Path(..., description="Tipo de despliegue: sip o widget"),
 ):
     """
     Elimina un despliegue (SIP o Widget) del sistema.
     """
-    success = await deployment_service.delete_deployment(workspace_slug, agent_id, type=type)
+    success = await deployment_service.delete_deployment(
+        workspace_slug, agent_id, type=type
+    )
     if not success:
-        raise HTTPException(status_code=404, detail=f"Despliegue tipo {type} no encontrado.")
-    
+        raise HTTPException(
+            status_code=404, detail=f"Despliegue tipo {type} no encontrado."
+        )
+
     return ActionResponse(
         success=True,
-        message=f"Despliegue {type} para {agent_id} eliminado exitosamente."
+        message=f"Despliegue {type} para {agent_id} eliminado exitosamente.",
     )

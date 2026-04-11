@@ -15,6 +15,7 @@ import asyncio
 import logging
 import time
 import uuid
+from enum import Enum
 from typing import Optional, Dict, Any
 
 from pipecat.pipeline.runner import PipelineRunner
@@ -28,6 +29,24 @@ from app.services.sip.ami_controller import AMIController
 from app.services.trunk_service import trunk_service
 from app.services.session_manager import session_manager
 from app.services.task_manager import task_manager
+
+
+class CallDirection(str, Enum):
+    """Dirección de la llamada."""
+
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
+class CallState(str, Enum):
+    """Estado de la llamada."""
+
+    RINGING = "ringing"
+    ANSWERED = "answered"
+    HANGUP = "hangup"
+    FAILED = "failed"
+
+
 from app.services.webhook_service import WebhookService
 from app.services.agents.factory.builder import ServiceFactory
 from app.services.agents.pipelines.context_setup import setup_context
@@ -44,7 +63,9 @@ class SIPCallHandler:
     and Pipecat pipelines.
     """
 
-    def __init__(self, audiosocket_server: AudioSocketServer, ami: Optional[AMIController] = None):
+    def __init__(
+        self, audiosocket_server: AudioSocketServer, ami: Optional[AMIController] = None
+    ):
         self._server = audiosocket_server
         self._ami = ami
         # Track active SIP sessions: channel_uuid → session data
@@ -109,7 +130,9 @@ class SIPCallHandler:
             # For now, we need the config to be passed or cached
             agent_config = await self._get_agent_config(agent_id, trunk_data)
             if not agent_config:
-                logger.error(f"[{session_id}] AgentConfig not found for agent_id={agent_id}")
+                logger.error(
+                    f"[{session_id}] AgentConfig not found for agent_id={agent_id}"
+                )
                 await conn.send_hangup()
                 return
 
@@ -161,7 +184,9 @@ class SIPCallHandler:
             all_trunk_keys = await trunk_service._redis.keys("trunk:index:*")
             for key in all_trunk_keys:
                 workspace = key.split(":")[-1]
-                result = await trunk_service.resolve_inbound_call(workspace, called_extension)
+                result = await trunk_service.resolve_inbound_call(
+                    workspace, called_extension
+                )
                 if result:
                     return result
 
@@ -188,6 +213,7 @@ class SIPCallHandler:
         raw = await trunk_service._redis.get(f"agent_config:{agent_id}")
         if raw:
             import json
+
             try:
                 return AgentConfig(**json.loads(raw))
             except Exception as e:
@@ -213,14 +239,25 @@ class SIPCallHandler:
 
             vad_config = config.runtime_profiles.vad
             vad_params = VADParams(
-                confidence=vad_config.params.confidence if vad_config and vad_config.params else 0.7,
-                start_secs=max(0.4, vad_config.params.start_secs if vad_config and vad_config.params else 0.4),
+                confidence=vad_config.params.confidence
+                if vad_config and vad_config.params
+                else 0.7,
+                start_secs=max(
+                    0.4,
+                    vad_config.params.start_secs
+                    if vad_config and vad_config.params
+                    else 0.4,
+                ),
                 stop_secs=0.2,
-                min_volume=vad_config.params.min_volume if vad_config and vad_config.params else 0.6,
+                min_volume=vad_config.params.min_volume
+                if vad_config and vad_config.params
+                else 0.6,
             )
 
             transport = SIPAudioSocketTransport(
-                params=SIPAudioSocketParams(vad_analyzer=SileroVADAnalyzer(params=vad_params)),
+                params=SIPAudioSocketParams(
+                    vad_analyzer=SileroVADAnalyzer(params=vad_params)
+                ),
                 conn=conn,
             )
 
@@ -234,7 +271,9 @@ class SIPCallHandler:
             tts = ServiceFactory.create_tts_service(config)
 
             # 3. Setup context
-            context_aggregator = setup_context(session_id, config, SileroVADAnalyzer(params=vad_params))
+            context_aggregator = setup_context(
+                session_id, config, SileroVADAnalyzer(params=vad_params)
+            )
 
             # 4. Build pipeline (reuse existing builder)
             pipeline, audio_buffer = build_pipeline(
@@ -270,7 +309,11 @@ class SIPCallHandler:
                     config.agent_id,
                     "session.started",
                     f"sip:{conn.channel_uuid}",
-                    {"session_id": session_id, "agent_id": config.agent_id, "channel": "sip"},
+                    {
+                        "session_id": session_id,
+                        "agent_id": config.agent_id,
+                        "channel": "sip",
+                    },
                     override_url=config.callback_url,
                 )
 
@@ -282,28 +325,37 @@ class SIPCallHandler:
             @transport.event_handler("on_dtmf_received")
             async def on_dtmf(transport, digit):
                 logger.info(f"[{session_id}] DTMF received: {digit}")
-                await session_manager.emit(session_id, {
-                    "event": "dtmf.received",
-                    "session_id": session_id,
-                    "digit": digit,
-                })
+                await session_manager.emit(
+                    session_id,
+                    {
+                        "event": "dtmf.received",
+                        "session_id": session_id,
+                        "digit": digit,
+                    },
+                )
 
             @context_aggregator.user().event_handler("on_user_turn_stopped")
             async def on_user_turn(aggregator, strategy, message):
-                await session_manager.emit(session_id, {
-                    "event": "transcript.user",
-                    "session_id": session_id,
-                    "text": message.content,
-                    "is_final": True,
-                })
+                await session_manager.emit(
+                    session_id,
+                    {
+                        "event": "transcript.user",
+                        "session_id": session_id,
+                        "text": message.content,
+                        "is_final": True,
+                    },
+                )
 
             @context_aggregator.assistant().event_handler("on_assistant_turn_stopped")
             async def on_assistant_turn(aggregator, message):
-                await session_manager.emit(session_id, {
-                    "event": "transcript.agent",
-                    "session_id": session_id,
-                    "text": message.content,
-                })
+                await session_manager.emit(
+                    session_id,
+                    {
+                        "event": "transcript.agent",
+                        "session_id": session_id,
+                        "text": message.content,
+                    },
+                )
 
             # 7. Start transport and run pipeline
             await transport.start()
@@ -327,7 +379,11 @@ class SIPCallHandler:
 
             # Send session.ended webhook
             try:
-                messages = list(context_aggregator.context.messages) if context_aggregator else []
+                messages = (
+                    list(context_aggregator.context.messages)
+                    if context_aggregator
+                    else []
+                )
                 await WebhookService.emit_event(
                     config.tenant_id,
                     config.agent_id,

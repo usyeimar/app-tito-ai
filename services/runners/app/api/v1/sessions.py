@@ -1,13 +1,29 @@
 import asyncio
+import json
 import logging
 import time
 import uuid
+import pipecat
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status, Request
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+    Request,
+)
 
 from app.core.config import settings
 from app.schemas.agent import AgentConfig
-from app.schemas.sessions import SessionResponse, SessionContext, ActionResponse, SessionListResponse, SessionLink
+from app.schemas.sessions import (
+    SessionResponse,
+    SessionContext,
+    ActionResponse,
+    SessionListResponse,
+    SessionLink,
+)
 from app.schemas.errors import APIErrorResponse
 from app.services.livekit_service import LiveKitService
 from app.services.daily_service import DailyService
@@ -20,19 +36,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 def get_session_links(request: Request, session_id: str):
     """Genera enlaces HATEOAS para una sesión, incluyendo WebSocket."""
     base_url = str(request.base_url).rstrip("/")
     # Protocolo WS
     ws_protocol = "wss" if request.url.scheme == "https" else "ws"
-    ws_url = f"{ws_protocol}://{request.url.netloc}/api/v1/sessions/{session_id}/ws"
-    
+    base_ws = f"{ws_protocol}://{request.url.netloc}/api/v1/sessions/{session_id}"
+
     api_path = f"{base_url}/api/v1/sessions/{session_id}"
-    
+
     return {
         "self": SessionLink(href=api_path, method="GET"),
         "stop": SessionLink(href=api_path, method="DELETE"),
-        "ws": SessionLink(href=ws_url, method="GET"),
+        "transcript": SessionLink(href=f"{base_ws}/transcript", method="GET"),
+        "chat": SessionLink(href=f"{base_ws}/chat", method="GET"),
+        "audio": SessionLink(href=f"{base_ws}/audio", method="GET"),
     }
 
 
@@ -44,7 +63,10 @@ def get_session_links(request: Request, session_id: str):
     response_description="Sesion creada exitosamente con credenciales de conexion",
     responses={
         201: {"model": SessionResponse, "description": "Sesion creada exitosamente."},
-        503: {"model": APIErrorResponse, "description": "Runner al maximo de capacidad."},
+        503: {
+            "model": APIErrorResponse,
+            "description": "Runner al maximo de capacidad.",
+        },
     },
 )
 async def create_session(config: AgentConfig, request: Request):
@@ -72,7 +94,9 @@ async def create_session(config: AgentConfig, request: Request):
     - `livekit` → Crea sala en LiveKit, devuelve URL WSS.
     """
     if task_manager.count() >= settings.MAX_CONCURRENT_SESSIONS:
-        logger.warning(f"Runner at capacity: {task_manager.count()}/{settings.MAX_CONCURRENT_SESSIONS}")
+        logger.warning(
+            f"Runner at capacity: {task_manager.count()}/{settings.MAX_CONCURRENT_SESSIONS}"
+        )
         raise HTTPException(
             status_code=503,
             detail="Runner at capacity",
@@ -94,17 +118,23 @@ async def create_session(config: AgentConfig, request: Request):
 
         # 1. Crear room en proveedor de transporte (síncrono, falla rápido)
         if provider == "daily":
-            room_data = await DailyService.create_room_and_tokens(room_name, participant_name)
+            room_data = await DailyService.create_room_and_tokens(
+                room_name, participant_name
+            )
         else:
-            room_data = LiveKitService.create_room_and_tokens(room_name, participant_name)
+            room_data = LiveKitService.create_room_and_tokens(
+                room_name, participant_name
+            )
 
         # 2. Guardar metadata de configuración
-        await session_manager.save_session(session_id, config, room_name=room_name, provider=provider)
+        await session_manager.save_session(
+            session_id, config, room_name=room_name, provider=provider
+        )
 
         # 3. Lanzar pipeline en background CON referencia controlada
         task = asyncio.create_task(
             _run_session(session_id, room_data, config, provider),
-            name=f"session-{session_id}"
+            name=f"session-{session_id}",
         )
         await task_manager.add(session_id, task)
 
@@ -124,9 +154,9 @@ async def create_session(config: AgentConfig, request: Request):
                 agent_id=config.agent_id,
                 tenant_id=config.tenant_id,
                 created_at=time.time(),
-                expires_at=expiration
+                expires_at=expiration,
             ),
-            _links=links
+            _links=links,
         )
     except Exception as e:
         logger.error(f"❌ Error al crear sesión: {e}")
@@ -136,14 +166,16 @@ async def create_session(config: AgentConfig, request: Request):
         )
 
 
-async def _run_session(session_id: str, room_data: dict, config: AgentConfig, provider: str):
+async def _run_session(
+    session_id: str, room_data: dict, config: AgentConfig, provider: str
+):
     """Wrapper que asegura cleanup aunque el pipeline falle."""
     try:
         engine = AgentPipelineEngine(
             room_url=room_data["ws_url"],
             token=room_data["bot_token"],
             config=config,
-            room_name=room_data["room_name"]
+            room_name=room_data["room_name"],
         )
         # Sincronizar session_id si AgentPipelineEngine genera uno propio (actualmente lo hace)
         engine.session_id = session_id
@@ -161,7 +193,7 @@ async def _run_session(session_id: str, room_data: dict, config: AgentConfig, pr
                 "session.error",
                 room_data["ws_url"],
                 {"session_id": session_id, "error": str(e)},
-                override_url=config.callback_url
+                override_url=config.callback_url,
             )
         except:
             pass
@@ -187,7 +219,7 @@ async def list_active_sessions(request: Request):
     """
     sessions = await session_manager.list_sessions()
     active_count = task_manager.count()
-    
+
     base_url = str(request.base_url).rstrip("/")
     links = {
         "self": SessionLink(href=f"{base_url}/api/v1/sessions", method="GET"),
@@ -195,10 +227,7 @@ async def list_active_sessions(request: Request):
     }
 
     return SessionListResponse(
-        sessions=sessions,
-        count=active_count,
-        status="OPERATIONAL",
-        _links=links
+        sessions=sessions, count=active_count, status="OPERATIONAL", _links=links
     )
 
 
@@ -214,7 +243,7 @@ async def list_active_sessions(request: Request):
                 "application/json": {
                     "example": {
                         "success": True,
-                        "message": "Sesion sess_a1b2c3d4e5f6 terminada exitosamente."
+                        "message": "Sesion sess_a1b2c3d4e5f6 terminada exitosamente.",
                     }
                 }
             }
@@ -222,10 +251,8 @@ async def list_active_sessions(request: Request):
         404: {
             "description": "Sesion no encontrada",
             "content": {
-                "application/json": {
-                    "example": {"detail": "Session not found"}
-                }
-            }
+                "application/json": {"example": {"detail": "Session not found"}}
+            },
         },
     },
 )
@@ -255,7 +282,10 @@ async def stop_session(session_id: str):
 
     # 2. Notificar vía Redis para otros pods (Opción C del plan)
     import json
-    await session_manager._redis.publish(f"session:{session_id}:control", json.dumps({"action": "stop"}))
+
+    await session_manager._redis.publish(
+        f"session:{session_id}:control", json.dumps({"action": "stop"})
+    )
 
     # 3. Eliminar room en el proveedor
     try:
@@ -269,21 +299,177 @@ async def stop_session(session_id: str):
         logger.warning(f"delete_room_failed | session_id: {session_id} | error: {e}")
 
     return ActionResponse(
-        success=True,
-        message=f"Sesión {session_id} terminada exitosamente."
+        success=True, message=f"Sesión {session_id} terminada exitosamente."
     )
 
 
-@router.websocket("/{session_id}/ws")
+@router.websocket("/{session_id}/transcript")
 async def session_websocket(session_id: str, ws: WebSocket):
+    """WebSocket endpoint para transcripciones en tiempo real.
+
+    Recibe transcripciones del pipeline via Redis Pub/Sub y las envíe al cliente.
+    El pipeline envía eventos usando session_manager.broadcast_transcript().
+
+    El cliente recibe JSON:
+    {"type": "transcript", "role": "user"|"assistant", "content": "...", "timestamp": "..."}
+    """
     session = await session_manager.get_session(session_id)
     if not session:
         await ws.close(code=4004, reason="Session not found")
         return
 
-    await session_manager.connect_ws(session_id, ws)
+    await ws.accept()
+
+    asyncio.create_task(session_manager.subscribe_to_transcripts(session_id, ws))
+
     try:
         while True:
             await ws.receive_text()
     except WebSocketDisconnect:
-        session_manager.disconnect_ws(session_id, ws)
+        pass
+    finally:
+        await session_manager.unsubscribe_from_transcripts(session_id, ws)
+
+
+@router.websocket("/{session_id}/chat")
+async def session_chat_websocket(session_id: str, ws: WebSocket):
+    """WebSocket endpoint para chat de texto bidireccional.
+
+    Permite enviar y recibir mensajes de texto durante la llamada de voz.
+    Útil para interfaces híbridas voz+texto o debugging.
+
+    Mensajes del cliente (JSON):
+        {"type": "message", "content": "texto del usuario"}
+
+    Mensajes del servidor (JSON):
+        {"type": "transcript", "role": "user|assistant", "content": "texto", "timestamp": 1234567890}
+        {"type": "message", "content": "texto del agente"}
+        {"type": "status", "state": "listening|thinking|speaking"}
+    """
+    session = await session_manager.get_session(session_id)
+    if not session:
+        await ws.close(code=4004, reason="Session not found")
+        return
+
+    await ws.accept()
+    await session_manager.connect_ws(session_id, ws, is_chat=True)
+
+    try:
+        while True:
+            data = await ws.receive_json()
+            msg_type = data.get("type")
+
+            if msg_type == "message":
+                content = data.get("content", "")
+                logger.info(f"[{session_id}] Chat message: {content[:100]}")
+
+                # Forward al pipeline para que el agente responda
+                # TODO: Integrate with pipeline
+                await ws.send_json(
+                    {
+                        "type": "status",
+                        "state": "thinking",
+                    }
+                )
+
+            elif msg_type == "typing":
+                # Cliente está escribiendo
+                logger.debug(f"[{session_id}] User typing")
+
+    except WebSocketDisconnect:
+        logger.info(f"[{session_id}] Chat disconnected")
+    except Exception as e:
+        logger.error(f"[{session_id}] Chat error: {e}")
+    finally:
+        session_manager.disconnect_ws(session_id, ws, is_chat=True)
+
+
+@router.websocket("/{session_id}/audio")
+async def session_audio_websocket(session_id: str, ws: WebSocket):
+    """WebSocket endpoint para audio PCM bidireccional con pipeline Pipecat.
+
+    Usa FastAPIWebsocketTransport para correr el pipeline completo:
+    CLIENTE → WebSocket → STT → LLM → TTS → WebSocket → CLIENTE
+    """
+    session = await session_manager.get_session(session_id)
+    if not session:
+        await ws.close(code=4004, reason="Session not found")
+        return
+
+    await ws.accept()
+
+    try:
+        config = AgentConfig.model_validate_json(session["config"])
+        config.agent_id = session.get("agent_id", "default")
+
+        from pipecat.transports.fastapi_websocket import (
+            FastAPIWebsocketTransport,
+            FastAPIWebsocketParams,
+        )
+        from pipecat.audio.vad.silero import SileroVADAnalyzer
+        from pipecat.audio.vad.vad_analyzer import VADParams
+
+        sample_rate = 16000
+        vad_params = VADParams(
+            confidence=0.7,
+            start_secs=0.4,
+            stop_secs=0.2,
+            min_volume=0.6,
+        )
+        vad_analyzer = SileroVADAnalyzer(params=vad_params)
+
+        params = FastAPIWebsocketParams(
+            audio_in_sample_rate=sample_rate,
+            audio_out_sample_rate=sample_rate,
+            add_wav_header=False,
+        )
+
+        transport = FastAPIWebsocketTransport(websocket=ws, params=params)
+
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, ws):
+            logger.info(f"[{session_id}] Client connected to audio WS")
+            await ws.send_text(json.dumps({"type": "started"}))
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, ws):
+            logger.info(f"[{session_id}] Client disconnected from audio WS")
+
+        from app.services.agents.pipelines.context_setup import setup_context
+        from app.services.agents.factory.builder import ServiceFactory
+
+        stt = ServiceFactory.create_stt_service(config)
+        llm = ServiceFactory.create_llm_service(config)
+        tts = ServiceFactory.create_tts_service(config)
+        context_aggregator = setup_context(session_id, config, vad_analyzer)
+
+        from app.services.agents.pipelines.pipeline_builder import build_pipeline
+
+        pipeline, _ = build_pipeline(
+            transport=transport,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            context_aggregator=context_aggregator,
+            config=config,
+        )
+
+        from pipecat.pipeline.task import PipelineTask, PipelineParams
+
+        task = PipelineTask(
+            pipeline, params=PipelineParams(allow_interruptions_by_all=True)
+        )
+        runner = pipecat.pipeline.runner.PipelineRunner()
+
+        await runner.run(task)
+
+    except WebSocketDisconnect:
+        logger.info(f"[{session_id}] Audio disconnected")
+    except Exception as e:
+        logger.error(f"[{session_id}] Audio error: {e}")
+        try:
+            await ws.send_text(json.dumps({"type": "error", "message": str(e)}))
+        except:
+            pass
+    finally:
+        await ws.close()

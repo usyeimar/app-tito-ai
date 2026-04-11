@@ -1,4 +1,5 @@
 """Redis-backed session manager for tracking active agent sessions across pods."""
+
 import asyncio
 import logging
 import json
@@ -20,6 +21,8 @@ class SessionManager:
         self._redis = aioredis.from_url(redis_url, decode_responses=True)
         # Sockets locales de esta instancia
         self._sockets: Dict[str, List[WebSocket]] = {}
+        # Sockets de transcripciones
+        self._transcript_sockets: Dict[str, List[WebSocket]] = {}
 
     async def save_session(
         self,
@@ -30,11 +33,11 @@ class SessionManager:
     ) -> None:
         """Persiste metadatos en Redis."""
         key = f"session:{session_id}"
-        
+
         # Obtener datos existentes si los hay
         existing_raw = await self._redis.get(key)
         existing = json.loads(existing_raw) if existing_raw else {}
-        
+
         value = {
             **existing,
             "session_id": session_id,
@@ -47,7 +50,7 @@ class SessionManager:
             "created_at": existing.get("created_at", time.time()),
             "updated_at": time.time(),
         }
-        
+
         await self._redis.setex(key, MAX_SESSION_DURATION, json.dumps(value))
 
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -76,6 +79,62 @@ class SessionManager:
         result = await self._redis.delete(f"session:{session_id}")
         return result > 0
 
+    # ── Transcript Management ────────────────────────────────────────────
+
+    async def broadcast_transcript(
+        self, session_id: str, role: str, content: str, timestamp: str
+    ):
+        """Envia transcripción a Redis para clientes subscriptos."""
+        import json
+
+        payload = json.dumps(
+            {
+                "type": "transcript",
+                "role": role,
+                "content": content,
+                "timestamp": timestamp,
+            }
+        )
+        await self._redis.publish(f"session:{session_id}:transcripts", payload)
+
+    async def subscribe_to_transcripts(self, session_id: str, ws: WebSocket):
+        """Suscribe un WebSocket a transcripciones de la sesión."""
+        if session_id not in self._transcript_sockets:
+            self._transcript_sockets[session_id] = []
+            asyncio.create_task(self._listen_transcripts(session_id))
+
+        self._transcript_sockets[session_id].append(ws)
+
+    async def unsubscribe_from_transcripts(self, session_id: str, ws: WebSocket):
+        """Desuscribe un WebSocket de transcripciones."""
+        sockets = self._transcript_sockets.get(session_id, [])
+        if ws in sockets:
+            sockets.remove(ws)
+
+    async def _listen_transcripts(self, session_id: str):
+        """Escucha transcripciones de Redis y las envĂ­a a WebSockets."""
+        import json
+
+        pubsub = self._redis.pubsub()
+        await pubsub.subscribe(f"session:{session_id}:transcripts")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    sockets = list(self._transcript_sockets.get(session_id, []))
+                    if not sockets:
+                        break
+
+                    for ws in sockets:
+                        try:
+                            await asyncio.wait_for(
+                                ws.send_text(message["data"]), timeout=0.050
+                            )
+                        except Exception:
+                            pass
+        finally:
+            self._transcript_sockets.pop(session_id, None)
+
     # ── WebSocket Management ──────────────────────────────────────────────
 
     async def connect_ws(self, session_id: str, ws: WebSocket) -> None:
@@ -85,9 +144,11 @@ class SessionManager:
             self._sockets[session_id] = []
             # Iniciar tarea de suscripción para esta sesión
             asyncio.create_task(self._subscribe_to_session_events(session_id))
-            
+
         self._sockets[session_id].append(ws)
-        logger.info(f"[{session_id}] WS local connected ({len(self._sockets[session_id])} listeners)")
+        logger.info(
+            f"[{session_id}] WS local connected ({len(self._sockets[session_id])} listeners)"
+        )
 
     def disconnect_ws(self, session_id: str, ws: WebSocket) -> None:
         """Elimina un WebSocket local."""
@@ -96,13 +157,15 @@ class SessionManager:
             listeners.remove(ws)
         if not listeners:
             self._sockets.pop(session_id, None)
-        logger.info(f"[{session_id}] WS local disconnected ({len(listeners)} listeners left)")
+        logger.info(
+            f"[{session_id}] WS local disconnected ({len(listeners)} listeners left)"
+        )
 
     async def _subscribe_to_session_events(self, session_id: str):
         """Tarea que escucha eventos de Redis y los envía a los WebSockets locales."""
         pubsub = self._redis.pubsub()
         await pubsub.subscribe(f"session:{session_id}:events")
-        
+
         try:
             async for message in pubsub.listen():
                 if message["type"] == "message":
@@ -110,12 +173,14 @@ class SessionManager:
                     # Enviar a todos los sockets locales para esta sesión
                     sockets = list(self._sockets.get(session_id, []))
                     if not sockets:
-                        break # No hay más listeners locales, cerrar suscripción
-                    
+                        break  # No hay más listeners locales, cerrar suscripción
+
                     for ws in sockets:
                         try:
                             # Timeout de 50ms como en Fase 0.2
-                            await asyncio.wait_for(ws.send_text(event_data), timeout=0.050)
+                            await asyncio.wait_for(
+                                ws.send_text(event_data), timeout=0.050
+                            )
                         except Exception:
                             self.disconnect_ws(session_id, ws)
         except Exception as e:

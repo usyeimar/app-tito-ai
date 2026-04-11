@@ -24,9 +24,27 @@ services/runners/venv/
 services/runners/__pycache__
 services/runners/.pytest_cache
 services/runners/.ruff_cache
+services/runners/.coverage
+services/runners/htmlcov/
 services/runners/.env
 services/runners/server.log
 services/runners/resources/data/recordings/
+
+# Python cache (global)
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+dist/
+build/
+*.egg-info/
+.ruff_cache/
+htmlcov/
+.coverage
+.mypy_cache/
+.pyright_cache/
 
 # IDE/OS
 /storage/

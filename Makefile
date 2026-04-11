@@ -90,3 +90,46 @@ ps:
 
 postman:
 	python scripts/merge-postman.py
+
+# ============================================================================
+# Runner (Python) Commands
+# ============================================================================
+
+.PHONY: runner runner-install runner-dev runner-test runner-test-unit runner-test-integration runner-test-websocket runner-test-sip runner-test-all runner-lint runner-format runner-clean
+
+runner:
+	cd services/runners && uv sync
+
+runner-install:
+	cd services/runners && uv sync
+
+runner-dev:
+	cd services/runners && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+runner-test: runner-test-all
+
+runner-test-unit:
+	cd services/runners && uv run python -m pytest tests/unit -v --tb=short
+
+runner-test-integration:
+	cd services/runners && uv run python -m pytest tests/integration -v --tb=short
+
+runner-test-websocket:
+	cd services/runners && uv run python -m pytest tests/websocket -v --tb=short
+
+runner-test-sip:
+	cd services/runners && uv run python -m pytest tests/sip -v --tb=short
+
+runner-test-all:
+	cd services/runners && uv run python -m pytest tests/ -v --tb=short
+
+runner-lint:
+	cd services/runners && uv run ruff check app/
+
+runner-format:
+	cd services/runners && uv run ruff format app/
+
+runner-clean:
+	find services/runners -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find services/runners -type f -name "*.pyc" -delete 2>/dev/null || true
+	rm -rf services/runners/.pytest_cache 2>/dev/null || true
