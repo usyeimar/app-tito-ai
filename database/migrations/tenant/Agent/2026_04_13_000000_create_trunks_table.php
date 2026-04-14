@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('name');
             $table->string('mode', 20)->default('inbound'); // inbound, register, outbound
             $table->unsignedInteger('max_concurrent_calls')->default(10);
-            $table->jsonb('codecs')->default(['ulaw', 'alaw']);
+            $table->jsonb('codecs')->default('["ulaw", "alaw"]');
             $table->string('status', 20)->default('active'); // active, inactive, suspended
             $table->jsonb('inbound_auth')->nullable(); // {auth_type: ip|userpass, allowed_ips: [], username?, password?}
             $table->jsonb('routes')->nullable(); // [{pattern, agent_id, priority, enabled}]
