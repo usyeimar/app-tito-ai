@@ -43,11 +43,6 @@ abstract class TenantTestCase extends TestCase
             'slug' => 'test-'.Str::random(6),
         ]);
 
-        // Create domain for routing
-        $tenant->domains()->create([
-            'domain' => $tenant->slug.'.localhost',
-        ]);
-
         return $tenant;
     }
 
@@ -58,13 +53,15 @@ abstract class TenantTestCase extends TestCase
             'guard_name' => 'tenant',
         ]);
 
-        $this->user = User::create([
-            'name' => 'Test Admin',
-            'email' => 'admin@test.com',
-            'email_verified_at' => now(),
-            'password' => bcrypt('password'),
-            'is_active' => true,
-        ]);
+        $this->user = User::firstOrCreate(
+            ['email' => 'admin@test.com'],
+            [
+                'name' => 'Test Admin',
+                'email_verified_at' => now(),
+                'password' => bcrypt('password'),
+                'is_active' => true,
+            ]
+        );
 
         $this->user->assignRole($role);
     }
