@@ -1,6 +1,7 @@
 {
     "version": "1.0.0",
     "agent_id": "alloy-unified-001",
+    "tenant_id": "alloy-finance-colombia",
     "metadata": {
         "name": "Julia Pro - Asistente Alloy Completo",
         "slug": "julia-alloy-unified",

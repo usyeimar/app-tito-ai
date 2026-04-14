@@ -3,7 +3,7 @@
 use App\Models\Central\Tenancy\TenantInvitation;
 use App\Models\Tenant\Auth\Authentication\User;
 
-describe('InvitationController', function () {
+describe('Invitations API', function () {
     describe('Index', function () {
         it('requires authentication', function () {
             $response = $this->getJson($this->tenantApiUrl('invitations'));

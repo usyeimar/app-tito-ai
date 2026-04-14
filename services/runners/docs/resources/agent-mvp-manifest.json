@@ -1,6 +1,7 @@
 {
     "version": "1.0.0",
     "agent_id": "alloy-mvp-001",
+    "tenant_id": "alloy-finance-colombia",
     "metadata": {
         "name": "Luna - Soporte Básico Alloy",
         "slug": "luna-alloy-mvp",

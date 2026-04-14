@@ -1,0 +1,153 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-widget-001",
+    "tenant_id": "alloy-finance-colombia",
+    "metadata": {
+        "name": "Luna - Widget Alloy",
+        "slug": "luna-alloy-widget",
+        "description": "Asistente conversacional por voz embebido como widget en la web de Alloy. Usa WebSocket directo del navegador al runner (FastAPIWebsocketTransport). Perfil liviano para sesiones cortas de pre-venta.",
+        "tags": ["widget", "web", "websocket", "pre-sales", "embed"],
+        "language": "es-CO"
+    },
+    "architecture": {
+        "type": "pipeline"
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "config": {
+                "temperature": 0.6,
+                "max_tokens": 512,
+                "top_p": 0.9
+            },
+            "instructions": "Eres Luna, asistente del sitio web de Alloy Finance.\n\n# Canal\nEstás embebida como widget de voz en alloy.finance. El usuario hizo click en el botón del micrófono — no pidió una demo, solo está explorando.\n\n# Contexto\nEl usuario está navegando el sitio. Puede estar viendo una página de producto, precios, o blog. Mantén respuestas cortas porque está haciendo otras cosas en paralelo.\n\n# Misión\n1. Resolver dudas rápidas sobre productos y precios.\n2. Capturar interés (nombre, email, empresa) si muestran intención de compra.\n3. Derivar a una demo real (SIP o WebRTC) con `programar_demo` si la conversación escala.\n4. Ser breve: este no es un canal para consultoría profunda.\n\n# Estilo\n- Española colombiana casual pero profesional.\n- MÁXIMO 2 oraciones por turno.\n- Si la respuesta requiere más, ofrece enviarla por email.\n- Tono amigable, no formal de banco."
+        },
+        "context": {
+            "enabled": false,
+            "strategy": "truncate",
+            "max_tokens": 2000,
+            "min_messages": 4
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "capturar_lead",
+                "processing_message": "guardando sus datos",
+                "description": "Guarda el contacto del visitante interesado para seguimiento comercial.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "nombre": {"type": "string"},
+                        "email": {"type": "string"},
+                        "empresa": {"type": "string"},
+                        "producto_interes": {
+                            "type": "string",
+                            "enum": ["FlowOptimizer", "InsightDash", "PayConnect", "otro"]
+                        }
+                    },
+                    "required": ["email", "producto_interes"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "programar_demo",
+                "processing_message": "conectando con el equipo comercial",
+                "description": "Escala la conversación a una demo agendada (video o telefónica).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "canal_preferido": {
+                            "type": "string",
+                            "enum": ["videollamada", "telefono"]
+                        },
+                        "mejor_horario": {
+                            "type": "string",
+                            "description": "Rango horario preferido (ej: 'mañana 9-12', 'tarde')"
+                        },
+                        "email": {"type": "string"}
+                    },
+                    "required": ["canal_preferido", "email"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "abrir_pagina",
+                "processing_message": "abriendo la página",
+                "description": "Navega al usuario a una página interna del sitio (pricing, demo, blog).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "pagina": {
+                            "type": "string",
+                            "enum": ["pricing", "products", "blog", "contact", "demo"]
+                        }
+                    },
+                    "required": ["pagina"]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "transport": {
+            "provider": "websocket"
+        },
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es",
+            "latency_mode": "interactive"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "speed": 1.1
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "confidence": 0.65,
+                "start_secs": 0.15,
+                "stop_secs": 0.2,
+                "min_volume": 0.5
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "turn_detection_strategy": "timeout",
+            "turn_detection_timeout_ms": 500,
+            "initial_action": "WAIT_FOR_USER",
+            "streaming": true,
+            "user_mute_strategies": []
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 20,
+                        "message": ["¿Hay algo más en lo que pueda ayudarte?"]
+                    }
+                ],
+                "final_message": "Cierro la sesión. ¡Escríbeme cuando quieras!"
+            },
+            "max_duration_seconds": 600
+        }
+    },
+    "compliance": {
+        "pii_redaction": false,
+        "record_audio": false
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}

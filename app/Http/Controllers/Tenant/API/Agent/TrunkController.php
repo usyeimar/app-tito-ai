@@ -17,73 +17,68 @@ use App\Http\Requests\Tenant\Agent\UpdateTrunkRequest;
 use App\Models\Tenant\Agent\Trunk;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 
 class TrunkController extends Controller
 {
-    public function __construct(
-        private readonly ListTrunks $listTrunks,
-        private readonly CreateTrunk $createTrunk,
-        private readonly ShowTrunk $showTrunk,
-        private readonly UpdateTrunk $updateTrunk,
-        private readonly DeleteTrunk $deleteTrunk,
-    ) {}
-
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, ListTrunks $action): JsonResponse
     {
         Gate::authorize('viewAny', Trunk::class);
 
-        $trunks = ($this->listTrunks)($request->all());
+        $trunks = $action($request->all());
 
         return response()->json([
+            'success' => true,
             'data' => $trunks->map(fn (Trunk $trunk) => $this->transformTrunk($trunk))->values(),
         ]);
     }
 
-    public function store(StoreTrunkRequest $request, CreateTrunkData $data): JsonResponse
+    public function store(StoreTrunkRequest $request, CreateTrunkData $data, CreateTrunk $action): JsonResponse
     {
         Gate::authorize('create', Trunk::class);
 
-        $trunk = ($this->createTrunk)($data);
+        $trunk = $action($data);
 
         return response()->json([
+            'success' => true,
             'data' => $this->transformTrunk($trunk),
             'message' => 'Trunk created',
         ], 201);
     }
 
-    public function show(Trunk $trunk): JsonResponse
+    public function show(Trunk $trunk, ShowTrunk $action): JsonResponse
     {
         Gate::authorize('view', $trunk);
 
-        $trunk = ($this->showTrunk)($trunk);
+        $trunk = $action($trunk);
 
         return response()->json([
+            'success' => true,
             'data' => $this->transformTrunk($trunk),
         ]);
     }
 
-    public function update(UpdateTrunkRequest $request, Trunk $trunk, UpdateTrunkData $data): JsonResponse
+    public function update(UpdateTrunkRequest $request, Trunk $trunk, UpdateTrunkData $data, UpdateTrunk $action): JsonResponse
     {
         Gate::authorize('update', $trunk);
 
-        $trunk = ($this->updateTrunk)($trunk, $data);
+        $trunk = $action($trunk, $data);
 
         return response()->json([
+            'success' => true,
             'data' => $this->transformTrunk($trunk),
             'message' => 'Trunk updated',
         ]);
     }
 
-    public function destroy(Trunk $trunk): JsonResponse
+    public function destroy(Trunk $trunk, DeleteTrunk $action): Response
     {
         Gate::authorize('delete', $trunk);
 
-        ($this->deleteTrunk)($trunk);
+        $action($trunk);
 
-        return response()->json([
-            'message' => 'Trunk deleted',
-        ]);
+        return response()->noContent();
     }
 
     /**

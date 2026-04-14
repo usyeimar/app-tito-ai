@@ -3,7 +3,7 @@
 use App\Models\Central\Auth\Role\Role;
 use App\Models\Tenant\Auth\Authentication\User;
 
-describe('UserController', function () {
+describe('Users API', function () {
     describe('Index', function () {
         it('requires authentication', function () {
             $response = $this->getJson($this->tenantApiUrl('users'));

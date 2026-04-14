@@ -2,6 +2,28 @@ from typing import Optional, List, Dict, Any, Literal, Union
 from pydantic import BaseModel, Field, ConfigDict, JsonValue
 
 
+# Literal types for provider validation (must match ServiceProviders enum
+# in app/services/agents/factory/providers.py).
+LLMProvider = Literal[
+    "openai", "anthropic", "groq", "openrouter",
+    "google", "together", "mistral", "ultravox",
+]
+STTProvider = Literal[
+    "deepgram", "cartesia", "assemblyai", "gladia",
+    "azure", "google", "openai",
+]
+TTSProvider = Literal[
+    "cartesia", "elevenlabs", "rime", "playht",
+    "deepgram", "openai", "azure", "aws", "google",
+]
+TransportProvider = Literal[
+    "livekit", "daily",          # WebRTC rooms
+    "asterisk_ari", "audiosocket",  # SIP / telephony
+    "websocket",                 # Widget / embedded chat
+]
+VADProvider = Literal["silero"]
+
+
 class AgentMetadata(BaseModel):
     """Metadata identifying the agent and its basic properties."""
     name: str = Field(..., description="The user-friendly name of the agent.", examples=["Luna Travel Assistant"])
@@ -39,7 +61,7 @@ class BrainLLMConfig(BaseModel):
 
 class BrainLLM(BaseModel):
     """The core intelligence module of the agent."""
-    provider: str = Field(..., description="LLM service provider (e.g., 'openai').", examples=["openai", "anthropic"])
+    provider: LLMProvider = Field(..., description="LLM service provider (e.g., 'openai').", examples=["openai", "anthropic"])
     model: str = Field(..., description="Specific model ID.", examples=["gpt-4o", "claude-3-5-sonnet"])
     config: Optional[BrainLLMConfig] = Field(default_factory=BrainLLMConfig)
     instructions: str = Field(..., description="System prompt or persona guiding the agent's behavior.")
@@ -77,7 +99,7 @@ class Brain(BaseModel):
 
 class RuntimeSTT(BaseModel):
     """Speech-to-Text configuration."""
-    provider: str = Field(..., description="Provider (e.g., 'deepgram').", examples=["deepgram", "google"])
+    provider: STTProvider = Field(..., description="Provider (e.g., 'deepgram').", examples=["deepgram", "google"])
     model: str = Field(..., description="Model identifier.", examples=["nova-2", "base"])
     latency_mode: Optional[str] = Field(None, description="Mode for optimizing latency.")
     api_key: Optional[str] = Field(None, description="STT-specific API key.")
@@ -86,7 +108,7 @@ class RuntimeSTT(BaseModel):
 
 class RuntimeTTS(BaseModel):
     """Text-to-Speech configuration."""
-    provider: str = Field(..., description="Provider (e.g., 'cartesia').", examples=["cartesia", "elevenlabs"])
+    provider: TTSProvider = Field(..., description="Provider (e.g., 'cartesia').", examples=["cartesia", "elevenlabs"])
     voice_id: str = Field(..., description="ID of the voice to use.")
     model_id: Optional[str] = Field(None, description="Specific model ID for the voice engine.")
     latency_mode: Optional[str] = Field(None, description="Latency vs. Quality optimization mode.")
@@ -104,13 +126,18 @@ class RuntimeVADParams(BaseModel):
 
 class RuntimeVAD(BaseModel):
     """Voice Activity Detection settings."""
-    provider: str = Field(..., description="VAD technology (e.g., 'silero').")
+    provider: VADProvider = Field(..., description="VAD technology (e.g., 'silero').")
     params: Optional[RuntimeVADParams] = Field(default_factory=RuntimeVADParams)
 
 
 class RuntimeTransport(BaseModel):
-    """Transport layer configuration."""
-    provider: str = Field("livekit", description="Transport provider ('livekit' or 'daily').")
+    """Transport layer configuration.
+
+    - ``livekit``/``daily`` — WebRTC rooms
+    - ``asterisk_ari``/``audiosocket`` — SIP telephony
+    - ``websocket`` — embedded widget (browser WS)
+    """
+    provider: TransportProvider = Field("livekit", description="Transport provider.")
 
 
 class RuntimeBehaviorSound(BaseModel):

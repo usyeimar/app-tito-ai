@@ -3,117 +3,133 @@
 use App\Models\Tenant\Agent\Agent;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
 
-it('requires authentication to list agents', function () {
-    $response = $this->getJson($this->tenantApiUrl('ai/agents'));
-    $response->assertUnauthorized();
-});
+describe('Agent API', function () {
+    describe('Authentication', function () {
+        it('requires authentication to list agents', function () {
+            $response = $this->getJson($this->tenantApiUrl('ai/agents'));
+            $response->assertUnauthorized();
+        });
 
-it('requires authentication to create an agent', function () {
-    $response = $this->postJson($this->tenantApiUrl('ai/agents'), [
-        'name' => 'Test Agent',
-    ]);
-    $response->assertUnauthorized();
-});
+        it('requires authentication to create an agent', function () {
+            $response = $this->postJson($this->tenantApiUrl('ai/agents'), [
+                'name' => 'Test Agent',
+            ]);
+            $response->assertUnauthorized();
+        });
+    });
 
-it('lists agents', function () {
-    Agent::factory()->count(3)->create();
+    describe('Agent Management', function () {
+        describe('List', function () {
+            it('lists agents', function () {
+                Agent::factory()->count(3)->create();
 
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->getJson($this->tenantApiUrl('ai/agents'));
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/agents'));
 
-    $response->assertOk();
-    $response->assertJsonStructure([
-        'data' => [[
-            'id',
-            'name',
-            'slug',
-            'description',
-            'language',
-            'tags',
-            'timezone',
-            'currency',
-            'number_format',
-            'knowledge_base_id',
-            'created_at',
-            'updated_at',
-        ]],
-    ]);
-    $response->assertJsonCount(3, 'data');
-});
+                $response->assertOk();
+                $response->assertJsonStructure([
+                    'data' => [[
+                        'id',
+                        'name',
+                        'slug',
+                        'description',
+                        'language',
+                        'tags',
+                        'timezone',
+                        'currency',
+                        'number_format',
+                        'knowledge_base_id',
+                        'created_at',
+                        'updated_at',
+                    ]],
+                ]);
+                $response->assertJsonCount(3, 'data');
+            });
 
-it('shows an agent', function () {
-    $agent = Agent::factory()->create(['name' => 'Test Agent']);
+            it('lists agents with knowledge base', function () {
+                $kb = KnowledgeBase::factory()->create();
+                Agent::factory()->create(['knowledge_base_id' => $kb->id]);
+                Agent::factory()->create(['knowledge_base_id' => null]);
 
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->getJson($this->tenantApiUrl("ai/agents/{$agent->id}"));
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/agents'));
 
-    $response->assertOk();
-    $response->assertJsonPath('data.id', (string) $agent->id);
-    $response->assertJsonPath('data.name', 'Test Agent');
-});
+                $response->assertOk();
+                $response->assertJsonCount(2, 'data');
+            });
+        });
 
-it('returns 404 for non-existent agent', function () {
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->getJson($this->tenantApiUrl('ai/agents/01HX99999999999999999999999'));
+        describe('Show', function () {
+            it('shows an agent', function () {
+                $agent = Agent::factory()->create(['name' => 'Test Agent']);
 
-    $response->assertNotFound();
-});
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl("ai/agents/{$agent->id}"));
 
-it('creates an agent', function () {
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->postJson($this->tenantApiUrl('ai/agents'), [
-            'name' => 'New Agent',
-            'language' => 'en',
-            'timezone' => 'America/New_York',
-        ]);
+                $response->assertOk();
+                $response->assertJsonPath('data.id', (string) $agent->id);
+                $response->assertJsonPath('data.name', 'Test Agent');
+            });
 
-    $response->assertCreated();
-    $response->assertJsonPath('data.name', 'New Agent');
-    $response->assertJsonPath('data.language', 'en');
-});
+            it('returns 404 for non-existent agent', function () {
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/agents/01HX99999999999999999999999'));
 
-it('updates an agent', function () {
-    $agent = Agent::factory()->create(['name' => 'Original']);
+                $response->assertNotFound();
+            });
+        });
 
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->patchJson($this->tenantApiUrl("ai/agents/{$agent->id}"), [
-            'name' => 'Updated Agent',
-        ]);
+        describe('Create', function () {
+            it('creates an agent', function () {
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->postJson($this->tenantApiUrl('ai/agents'), [
+                        'name' => 'New Agent',
+                        'language' => 'en',
+                        'timezone' => 'America/New_York',
+                    ]);
 
-    $response->assertOk();
-    $response->assertJsonPath('data.name', 'Updated Agent');
+                $response->assertCreated();
+                $response->assertJsonPath('data.name', 'New Agent');
+                $response->assertJsonPath('data.language', 'en');
+            });
 
-    expect($agent->fresh()->name)->toBe('Updated Agent');
-});
+            it('requires name to create an agent', function () {
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->postJson($this->tenantApiUrl('ai/agents'), [
+                        'language' => 'en',
+                    ]);
 
-it('deletes an agent', function () {
-    $agent = Agent::factory()->create();
+                $response->assertUnprocessable();
+                assertHasValidationError($response, 'name');
+            });
+        });
 
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->deleteJson($this->tenantApiUrl("ai/agents/{$agent->id}"));
+        describe('Update', function () {
+            it('updates an agent', function () {
+                $agent = Agent::factory()->create(['name' => 'Original']);
 
-    $response->assertOk();
-    expect(Agent::query()->whereKey($agent->id)->exists())->toBeFalse();
-});
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->patchJson($this->tenantApiUrl("ai/agents/{$agent->id}"), [
+                        'name' => 'Updated Agent',
+                    ]);
 
-it('requires name to create an agent', function () {
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->postJson($this->tenantApiUrl('ai/agents'), [
-            'language' => 'en',
-        ]);
+                $response->assertOk();
+                $response->assertJsonPath('data.name', 'Updated Agent');
 
-    $response->assertUnprocessable();
-    assertHasValidationError($response, 'name');
-});
+                expect($agent->fresh()->name)->toBe('Updated Agent');
+            });
+        });
 
-it('lists agents with knowledge base', function () {
-    $kb = KnowledgeBase::factory()->create();
-    Agent::factory()->create(['knowledge_base_id' => $kb->id]);
-    Agent::factory()->create(['knowledge_base_id' => null]);
+        describe('Delete', function () {
+            it('deletes an agent', function () {
+                $agent = Agent::factory()->create();
 
-    $response = $this->actingAs($this->user, 'tenant-api')
-        ->getJson($this->tenantApiUrl('ai/agents'));
+                $response = $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/agents/{$agent->id}"));
 
-    $response->assertOk();
-    $response->assertJsonCount(2, 'data');
+                $response->assertOk();
+                expect(Agent::query()->whereKey($agent->id)->exists())->toBeFalse();
+            });
+        });
+    });
 });

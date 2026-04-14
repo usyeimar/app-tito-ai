@@ -1,0 +1,195 @@
+{
+    "schema_version": "2.1.0",
+    "id": "tito-mvp-001",
+    "tenant_id": "tito-ai",
+
+    "name": "Tito",
+    "description": "Agente universal MVP. Channel-agnostic: funciona en SIP, WebRTC, Widget y WhatsApp.",
+
+    "model": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.4,
+        "max_tokens": 1024,
+        "system_prompt": "Eres Tito, asistente virtual de la empresa.\n\n# Tu Rol\nAtiendes clientes por diferentes canales: teléfono, videollamada, chat web y WhatsApp.\n\n# Capacidades\n1. SOPORTE: Responder preguntas sobre productos y servicios.\n2. VENTAS: Calificar leads, agendar demos.\n3. COBRANZA: Recordar pagos, ofrecer planes.\n4. RECEPCIÓN: Identificar motivo y derivar al área correcta.\n\n# Protocolo\n- SIEMPRE confirma identidad antes de mostrar datos sensibles.\n- Usa transferir_a_humano cuando el cliente lo pida o supere tu alcance.\n- Usa consultar_api para datos del backend.\n- Si no hay humano, usa tomar_mensaje.\n\n# Estilo\n- Español colombiano, trato de usted.\n- Respuestas concisas: máximo 2-3 oraciones.\n- Adapta extensión según canal."
+    },
+
+    "transcriber": {
+        "provider": "deepgram",
+        "model": "nova-2",
+        "language": "es",
+        "smart_format": true,
+        "numerals": true
+    },
+
+    "voice": {
+        "provider": "cartesia",
+        "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+        "model_id": "sonic-2",
+        "speed": 1.0
+    },
+
+    "vad": {
+        "provider": "silero",
+        "confidence": 0.7,
+        "start_secs": 0.3,
+        "stop_secs": 0.25
+    },
+
+    "behavior": {
+        "interruptibility": true,
+        "turn_detection": "smart",
+        "initial_action": "speak_first",
+        "streaming": true,
+        "user_mute_strategies": ["until_first_bot_complete", "function_call"]
+    },
+
+    "tools": [
+        {
+            "name": "transferir_a_humano",
+            "description": "Transfiere la conversación a un agente humano disponible. El runner adapta el mecanismo según el canal activo (SIP REFER, LiveKit transfer, webhook, redirect).",
+            "processing_message": "le transfiero con un asesor, un momento",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "motivo": {
+                        "type": "string",
+                        "enum": [
+                            "cliente_solicito",
+                            "consulta_compleja",
+                            "queja",
+                            "venta",
+                            "error"
+                        ]
+                    },
+                    "prioridad": {
+                        "type": "string",
+                        "enum": ["normal", "alta", "urgente"],
+                        "default": "normal"
+                    },
+                    "resumen": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "description": "Resumen de lo conversado para el agente humano"
+                    }
+                },
+                "required": ["motivo"]
+            },
+            "handler": "internal:handoff",
+            "timeout_ms": 15000,
+            "on_failure": "use_tomar_mensaje"
+        },
+        {
+            "name": "consultar_api",
+            "description": "Consulta endpoints del backend del tenant para obtener datos del cliente, productos, precios, etc.",
+            "processing_message": "un momento mientras consulto",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "endpoint": {
+                        "type": "string",
+                        "description": "Ruta del endpoint (ej: /clientes/{id}/saldo)"
+                    },
+                    "metodo": {
+                        "type": "string",
+                        "enum": ["GET", "POST"],
+                        "default": "GET"
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Parámetros de la consulta",
+                        "additionalProperties": true
+                    }
+                },
+                "required": ["endpoint"]
+            },
+            "handler": "internal:http_call",
+            "config": {
+                "base_url": "https://api.empresa.com/v1",
+                "auth": {
+                    "type": "bearer",
+                    "secret_ref": "vault://tenants/tito-ai/api-token"
+                }
+            },
+            "timeout_ms": 5000,
+            "retries": { "max": 2, "backoff_ms": 500 },
+            "rate_limit": { "per_session": 10 },
+            "cache": { "enabled": true, "ttl_seconds": 120 },
+            "on_failure": "return_error_to_llm"
+        },
+        {
+            "name": "tomar_mensaje",
+            "description": "Registra un mensaje del cliente para callback cuando no hay agente humano disponible.",
+            "processing_message": "registrando su mensaje",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nombre": {
+                        "type": "string",
+                        "description": "Nombre del cliente"
+                    },
+                    "contacto": {
+                        "type": "string",
+                        "description": "Teléfono o email para devolver llamada"
+                    },
+                    "area": {
+                        "type": "string",
+                        "enum": ["soporte", "ventas", "cobranza", "gerencia"]
+                    },
+                    "mensaje": {
+                        "type": "string",
+                        "description": "Resumen del motivo"
+                    }
+                },
+                "required": ["nombre", "contacto", "area", "mensaje"]
+            },
+            "handler": "internal:save_callback",
+            "config": { "sla_hours": 24, "notify_team": true },
+            "timeout_ms": 3000,
+            "on_failure": "log_and_continue"
+        },
+        {
+            "name": "enviar_notificacion",
+            "description": "Envía una notificación al cliente por SMS o email después de la sesión.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "canal": { "type": "string", "enum": ["sms", "email"] },
+                    "destinatario": { "type": "string" },
+                    "asunto": { "type": "string" },
+                    "contenido": { "type": "string" }
+                },
+                "required": ["canal", "destinatario", "contenido"]
+            },
+            "handler": "internal:send_notification",
+            "timeout_ms": 5000,
+            "rate_limit": { "per_session": 3 },
+            "on_failure": "log_and_continue"
+        }
+    ],
+
+    "handoff": {
+        "strategy": "auto",
+        "graceful": true,
+        "include_transcript": true,
+        "include_collected_data": true,
+        "fallback_tool": "tomar_mensaje"
+    },
+
+    "session": {
+        "max_duration_seconds": 900,
+        "inactivity_timeout_seconds": 30,
+        "max_tool_calls": 15
+    },
+
+    "budget": {
+        "max_cost_usd_per_session": 0.5,
+        "max_tokens_per_session": 30000
+    },
+
+    "localization": {
+        "locale": "es-CO",
+        "timezone": "America/Bogota",
+        "currency": "COP"
+    }
+}

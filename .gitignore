@@ -51,3 +51,5 @@ htmlcov/
 .idea/
 .DS_Store
 services/pipecat/
+
+.claude/scheduled_tasks.lock

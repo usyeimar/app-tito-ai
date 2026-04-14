@@ -1,0 +1,420 @@
+{
+    "$schema": "https://schemas.tito.ai/agent/v2.0.0.json",
+    "schema_version": "2.0.0",
+
+    "id": "alloy-collections-sip-001",
+    "tenant_id": "alloy-finance-colombia",
+    "extends": "preset://sip-inbound-co-v1@2026.02",
+
+    "metadata": {
+        "name": "Mariana — Cobranza Preventiva",
+        "slug": "mariana-cobranza-sip",
+        "description": "Agente telefónico de cobranza preventiva (mora 1-30 días). Contacta clientes para recordar pago, ofrecer plan de refinanciación y escalar a gestor humano cuando sea necesario.",
+        "locale": "es-CO",
+        "labels": {
+            "env": "prod",
+            "channel": "sip",
+            "team": "cobranza",
+            "tier": "regulated",
+            "criticality": "high"
+        },
+        "owner": {
+            "team": "collections-ops",
+            "contact": "cobranza-ops@alloy.finance",
+            "oncall_rotation": "pagerduty://collections-prod"
+        }
+    },
+
+    "lifecycle": {
+        "status": "active",
+        "created_at": "2026-03-02T14:22:10Z",
+        "created_by": "carolina.mendez@alloy.finance",
+        "updated_at": "2026-04-10T09:05:42Z",
+        "updated_by": "system.ci",
+        "parent_version": "alloy-collections-sip-001@v7",
+        "version_tag": "v8",
+        "change_note": "Reducir agresividad tras feedback de compliance: eliminar menciones de buró antes del día 15"
+    },
+
+    "rollout": {
+        "traffic_percentage": 100,
+        "kill_switch": false,
+        "canary_of": null,
+        "ab_variants": [
+            {
+                "variant_id": "prompt-empathic-v2",
+                "traffic_percentage": 20,
+                "overrides": {
+                    "brain.prompt.template": "ref://prompts/mariana-cobranza-empathic.md@v2"
+                }
+            }
+        ]
+    },
+
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback": {
+                    "llm": { "provider": "anthropic", "model": "claude-3-5-sonnet" },
+                    "stt": { "provider": "assemblyai", "model": "universal-2" },
+                    "tts": { "provider": "elevenlabs", "voice_id": "TxGEqnHWrfWFTfGW9XjX" }
+                },
+                "health_check_interval_ms": 5000,
+                "circuit_breaker": {
+                    "failure_threshold": 3,
+                    "reset_after_seconds": 60
+                }
+            }
+        }
+    },
+
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "api_key_ref": "vault://tenants/alloy-finance-colombia/openai/prod",
+            "config": {
+                "temperature": 0.3,
+                "max_tokens": 1024,
+                "top_p": 0.9,
+                "seed": 20260413
+            }
+        },
+        "prompt": {
+            "template": "ref://prompts/mariana-cobranza-sip.md@v8",
+            "fragments": [
+                "ref://prompts/common/compliance-co-habeas-data.md",
+                "ref://prompts/common/tono-colombiano-formal.md",
+                "ref://prompts/common/channel-sip-restrictions.md"
+            ],
+            "variables": {
+                "brand": "Alloy Finance",
+                "collections_hours_co": "Lunes a sábado, 7am a 7pm",
+                "min_days_before_bureau_mention": 15,
+                "max_payment_plan_months": 6
+            }
+        },
+        "context": {
+            "enabled": true,
+            "strategy": "summarize",
+            "max_tokens": 3000,
+            "min_messages": 4,
+            "summarizer_model": { "provider": "openai", "model": "gpt-4o-mini" }
+        },
+        "knowledge_base": {
+            "id": "kb-alloy-collections-scripts-co",
+            "top_k": 5,
+            "min_similarity": 0.72,
+            "rerank": { "provider": "cohere", "model": "rerank-3" },
+            "filters": { "locale": "es-CO", "channel": "sip" },
+            "fallback_when_empty": "use_prompt_default"
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal",
+            "date_format": "dd/MM/yyyy"
+        }
+    },
+
+    "capabilities": {
+        "tools": [
+            {
+                "name": "consultar_saldo_mora",
+                "description": "Consulta el saldo vencido, días en mora y cuota pendiente del cliente identificado.",
+                "processing_message": {
+                    "es-CO": "un momento mientras consulto su estado de cuenta"
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "documento_tipo": { "type": "string", "enum": ["CC", "CE", "NIT"] },
+                        "documento_numero": { "type": "string", "pattern": "^[0-9]{6,12}$" }
+                    },
+                    "required": ["documento_tipo", "documento_numero"]
+                },
+                "execution": {
+                    "endpoint": "https://api-cobranza.alloy.finance/v2/mora/consultar",
+                    "auth": { "type": "oauth2_client", "secret_ref": "vault://tenants/alloy/collections-api" },
+                    "timeout_ms": 4000,
+                    "retries": { "max": 2, "backoff_ms": 500, "backoff_strategy": "exponential" },
+                    "idempotency_key_from": ["documento_numero"],
+                    "auth_scope": "collections.read",
+                    "rate_limit": { "per_session": 3 },
+                    "on_failure": "escalate_to_human",
+                    "cache": { "ttl_seconds": 300, "key_from": ["documento_numero"] }
+                },
+                "disabled": false
+            },
+            {
+                "name": "crear_plan_pago",
+                "description": "Genera un plan de refinanciación con cuotas mensuales. Requiere doble confirmación verbal del cliente.",
+                "processing_message": {
+                    "es-CO": "estoy preparando su plan de pago, un momento por favor"
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "documento_numero": { "type": "string" },
+                        "cuotas": { "type": "integer", "minimum": 1, "maximum": 6 },
+                        "fecha_primer_pago_iso": { "type": "string", "format": "date" }
+                    },
+                    "required": ["documento_numero", "cuotas", "fecha_primer_pago_iso"]
+                },
+                "execution": {
+                    "endpoint": "https://api-cobranza.alloy.finance/v2/plan/crear",
+                    "auth": { "type": "oauth2_client", "secret_ref": "vault://tenants/alloy/collections-api" },
+                    "timeout_ms": 8000,
+                    "retries": { "max": 1, "backoff_ms": 1000 },
+                    "idempotency_key_from": ["documento_numero", "cuotas", "fecha_primer_pago_iso"],
+                    "auth_scope": "collections.write.payment_plan",
+                    "requires_confirmation": {
+                        "enabled": true,
+                        "prompt_template": "Confirmo que acepta un plan a {cuotas} cuotas con primer pago el {fecha_primer_pago_iso}. ¿Es correcto?",
+                        "expected_affirmative": ["sí", "si", "correcto", "confirmo", "acepto", "de acuerdo"]
+                    },
+                    "rate_limit": { "per_session": 1 },
+                    "on_failure": "escalate_to_human",
+                    "audit": {
+                        "log_level": "INFO",
+                        "persist_to": "collections_audit_trail",
+                        "legal_hold": true
+                    }
+                },
+                "disabled": false
+            },
+            {
+                "name": "transferir_a_gestor",
+                "description": "Transfiere la llamada SIP a un gestor humano de cobranza mediante SIP REFER.",
+                "processing_message": {
+                    "es-CO": "lo comunico con un gestor, un momento"
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "motivo": {
+                            "type": "string",
+                            "enum": [
+                                "cliente_solicito_humano",
+                                "consulta_fuera_de_alcance",
+                                "disputa_monto",
+                                "cliente_molesto",
+                                "error_tecnico"
+                            ]
+                        },
+                        "prioridad": { "type": "string", "enum": ["normal", "alta", "urgente"] },
+                        "resumen_conversacion": { "type": "string", "maxLength": 500 }
+                    },
+                    "required": ["motivo", "prioridad"]
+                },
+                "execution": {
+                    "handler": "internal:sip_refer",
+                    "config": {
+                        "queue_by_priority": {
+                            "normal": "sip:queue-cobranza-l1@asterisk",
+                            "alta": "sip:queue-cobranza-l2@asterisk",
+                            "urgente": "sip:queue-cobranza-supervisor@asterisk"
+                        },
+                        "fallback_extension": "2000",
+                        "context_push": "pass_conversation_summary"
+                    },
+                    "timeout_ms": 15000,
+                    "on_failure": "play_message_and_hangup"
+                },
+                "disabled": false
+            }
+        ],
+        "handoff": {
+            "strategy": "sip_refer",
+            "graceful": true,
+            "context_transfer": {
+                "enabled": true,
+                "include_transcript": true,
+                "include_collected_data": true,
+                "format": "json_header_x_tito_context"
+            },
+            "fallback_when_no_agent_available": {
+                "action": "take_message",
+                "tool": "tomar_mensaje_callback"
+            }
+        }
+    },
+
+    "runtime": {
+        "transport": {
+            "provider": "asterisk_ari",
+            "config": {
+                "codec_preferences": ["opus", "ulaw", "alaw"],
+                "sample_rate_hz": 8000,
+                "dtmf_mode": "rfc2833",
+                "stir_shaken": { "attestation": "A", "identity_header_required": true },
+                "max_ring_seconds": 30,
+                "trunk_affinity": "trk_claro_bogota_primary",
+                "call_recording_forced": true
+            }
+        },
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2-phonecall",
+            "language": "es",
+            "latency_mode": "interactive",
+            "api_key_ref": "vault://tenants/alloy-finance-colombia/deepgram/prod",
+            "config": {
+                "punctuate": true,
+                "smart_format": true,
+                "numerals": true,
+                "profanity_filter": false,
+                "keywords": [
+                    { "term": "cédula", "boost": 2.0 },
+                    { "term": "refinanciación", "boost": 1.5 },
+                    { "term": "Bancolombia", "boost": 1.5 },
+                    { "term": "Datacrédito", "boost": 1.5 }
+                ]
+            }
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "model_id": "sonic-2",
+            "api_key_ref": "vault://tenants/alloy-finance-colombia/cartesia/prod",
+            "speed": 1.0,
+            "config": {
+                "emotion": "neutral-empathic",
+                "prosody": { "pitch": "medium", "rate": "medium" }
+            }
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "confidence": 0.7,
+                "start_secs": 0.35,
+                "stop_secs": 0.25,
+                "min_volume": 0.6
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "turn_detection_strategy": "smart",
+            "smart_turn_stop_secs": 1.2,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true,
+            "user_mute_strategies": ["until_first_bot_complete", "function_call"],
+            "thinking_sound": {
+                "audio": "ref://sounds/thinking-soft-phone.wav",
+                "volume": 0.12,
+                "enabled": true,
+                "trigger_after_ms": 1500
+            },
+            "guardrails": {
+                "max_consecutive_no_input": 3,
+                "max_tool_call_loops": 4,
+                "profanity_handling": "acknowledge_and_redirect"
+            }
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 10,
+                        "selection": "random",
+                        "messages": [
+                            { "es-CO": "¿Sigue en línea?" },
+                            { "es-CO": "¿Me puede escuchar?" }
+                        ]
+                    },
+                    {
+                        "wait_seconds": 15,
+                        "selection": "first",
+                        "messages": [
+                            { "es-CO": "Parece que la línea se cortó. Intentaré contactarle más tarde." }
+                        ]
+                    }
+                ],
+                "final_message": {
+                    "es-CO": "Cerraré la llamada por falta de respuesta. Que tenga buen día."
+                }
+            },
+            "max_duration_seconds": 900
+        },
+        "messages_i18n": "ref://messages/mariana-cobranza.yml@v3"
+    },
+
+    "compliance": {
+        "pii": {
+            "redact_in_transcripts": ["phone", "email", "cedula", "card_pan", "account_number"],
+            "redact_in_logs": ["phone", "email", "cedula", "card_pan", "account_number", "full_name"],
+            "strategy": "mask",
+            "preserve_last": 4
+        },
+        "recording": {
+            "audio": true,
+            "retention_days": 180,
+            "region": "co-bogota",
+            "encryption": "AES-256-GCM",
+            "access_audit": true
+        },
+        "consent": {
+            "required": true,
+            "disclosure_text_ref": "ref://legal/consent-cobranza-co-habeas-data.md@v4",
+            "disclosure_timing": "at_call_start",
+            "record_acknowledgement": true,
+            "opt_out_tool": "registrar_no_contactar"
+        },
+        "regulations": ["CO-1581-2012-HabeasData", "CO-1266-2008-ReportesCrediticios", "PCI-DSS-4.0"],
+        "data_residency": "co",
+        "schedule_restrictions": {
+            "timezone": "America/Bogota",
+            "allowed_hours": [{ "start": "07:00", "end": "19:00" }],
+            "allowed_days": ["mon", "tue", "wed", "thu", "fri", "sat"],
+            "blackout_dates_ref": "ref://calendars/co-feriados.yml"
+        }
+    },
+
+    "observability": {
+        "log_level": "INFO",
+        "trace_sampling_rate": 0.2,
+        "otlp_endpoint": "https://otlp.observability.alloy.finance/v1/traces",
+        "metrics_enabled": true,
+        "log_redaction_rules": [
+            "(?i)cedula[\\s:=]+[0-9]+",
+            "(?i)tarjeta[\\s:=]+[0-9 -]+",
+            "(?i)otp[\\s:=]+[0-9]+"
+        ],
+        "alerts": {
+            "on_tool_timeout": "pagerduty://collections-prod",
+            "on_pipeline_error": "slack://eng-runners-alerts",
+            "on_compliance_violation": "email://compliance@alloy.finance"
+        },
+        "custom_dimensions": {
+            "business_unit": "collections",
+            "agent_tier": "preventive"
+        }
+    },
+
+    "evaluation": {
+        "dataset_id": "eval-mariana-cobranza-v3",
+        "golden_turns_ref": "ref://evals/mariana-cobranza.yml@v3",
+        "regression_on_deploy": true,
+        "regression_threshold": 0.95,
+        "metrics": ["task_completion_rate", "avg_handle_time", "escalation_rate", "compliance_violations"],
+        "shadow_traffic": {
+            "enabled": false,
+            "percentage": 0
+        }
+    },
+
+    "budget": {
+        "max_cost_usd_per_session": 0.35,
+        "max_tokens_per_session": 25000,
+        "max_tool_calls_per_session": 12,
+        "on_limit": "soft_handoff",
+        "cost_alert": {
+            "threshold_usd_per_day": 50,
+            "channel": "slack://finops-runners"
+        }
+    }
+}

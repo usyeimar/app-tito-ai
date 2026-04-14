@@ -1,0 +1,164 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-webrtc-001",
+    "tenant_id": "alloy-finance-colombia",
+    "callback_url": "https://webhook.alloy.finance/runners/webrtc-events",
+    "metadata": {
+        "name": "Alex - Asesor Premium Alloy (Video)",
+        "slug": "alex-alloy-webrtc",
+        "description": "Agente de voz y video para asesoría financiera premium vía WebRTC (LiveKit). Audio HD 48kHz, baja latencia, soporta compartir pantalla.",
+        "tags": ["webrtc", "livekit", "video", "hd-audio", "premium"],
+        "language": "es-CO"
+    },
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback_provider": "anthropic",
+                "fallback_model": "claude-3-5-sonnet",
+                "health_check_interval_ms": 3000
+            }
+        }
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "config": {
+                "temperature": 0.5,
+                "max_tokens": 4096,
+                "top_p": 0.95
+            },
+            "instructions": "Eres Alex, asesor financiero senior de Alloy Finance Premium.\n\n# Canal\nEstás en una videollamada WebRTC con el cliente (audio HD, baja latencia). Puedes referir a pantalla compartida, dashboards y documentos que el cliente esté viendo.\n\n# Ventajas de este canal vs. teléfono\n- Puedes decir URLs, emails y referencias visuales con confianza.\n- El cliente puede leer pantallas mientras habla → respuestas pueden ser más detalladas.\n- Latencia <200ms: ritmo conversacional natural, sin pausas largas.\n\n# Capacidades\n1. Asesoría de inversiones y planeación financiera.\n2. Análisis de portafolios en tiempo real (pide al cliente compartir pantalla).\n3. Cotizaciones personalizadas.\n4. Agendar reuniones de seguimiento con `agendar_reunion`.\n5. Enviar reportes en PDF con `enviar_reporte`.\n\n# Estilo\n- Español colombiano profesional, trato de usted.\n- 3-4 oraciones por turno — hay tiempo para contexto.\n- Usa analogías visuales cuando sea útil (\"como ve en la columna de la derecha...\")."
+        },
+        "knowledge_base": {
+            "id": "kb-alloy-wealth-products-v3"
+        },
+        "context": {
+            "enabled": true,
+            "strategy": "summarize",
+            "max_tokens": 8000,
+            "min_messages": 6
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "agendar_reunion",
+                "processing_message": "agendando la reunión en su calendario",
+                "description": "Agenda una reunión de seguimiento y envía invitación de calendario.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email_cliente": {"type": "string"},
+                        "fecha_iso": {"type": "string", "description": "Fecha/hora en ISO-8601"},
+                        "duracion_min": {"type": "integer", "enum": [30, 45, 60, 90]},
+                        "tema": {"type": "string"}
+                    },
+                    "required": ["email_cliente", "fecha_iso", "duracion_min", "tema"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "enviar_reporte",
+                "processing_message": "generando y enviando el reporte",
+                "description": "Genera un PDF con análisis financiero y lo envía por email.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email": {"type": "string"},
+                        "tipo_reporte": {
+                            "type": "string",
+                            "enum": ["portafolio", "flujo_caja", "proyeccion_12m", "comparativo"]
+                        }
+                    },
+                    "required": ["email", "tipo_reporte"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "mostrar_dashboard",
+                "processing_message": "abriendo el dashboard en su pantalla",
+                "description": "Hace push de un URL al cliente para abrir un dashboard en su navegador.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "dashboard": {
+                            "type": "string",
+                            "enum": ["portafolio", "rendimiento", "impuestos", "metas"]
+                        }
+                    },
+                    "required": ["dashboard"]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "transport": {
+            "provider": "livekit"
+        },
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2",
+            "language": "es",
+            "latency_mode": "interactive"
+        },
+        "tts": {
+            "provider": "elevenlabs",
+            "voice_id": "TxGEqnHWrfWFTfGW9XjX",
+            "model_id": "eleven_turbo_v2_5",
+            "speed": 1.0
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "confidence": 0.75,
+                "start_secs": 0.2,
+                "stop_secs": 0.15,
+                "min_volume": 0.5
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "turn_detection_strategy": "smart",
+            "smart_turn_stop_secs": 0.8,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true,
+            "user_mute_strategies": ["function_call"],
+            "thinking_sound": {
+                "audio": "resources/sounds/thinking-soft.mp3",
+                "volume": 0.15,
+                "enabled": true
+            }
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 25,
+                        "message": ["¿Le gustaría explorar otro tema?"]
+                    }
+                ],
+                "final_message": "Cerraré la videollamada. Le enviaré un resumen por correo. Gracias por su tiempo."
+            },
+            "max_duration_seconds": 3600
+        }
+    },
+    "compliance": {
+        "pii_redaction": true,
+        "record_audio": true
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}

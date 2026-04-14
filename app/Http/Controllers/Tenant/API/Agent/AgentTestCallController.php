@@ -10,7 +10,6 @@ use App\Services\Tenant\Agent\Runner\RunnerClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use RuntimeException;
 
 class AgentTestCallController extends Controller
 {
@@ -24,28 +23,21 @@ class AgentTestCallController extends Controller
     {
         Gate::authorize('view', $agent);
 
-        try {
-            $session = $this->runner->createSession($agent);
-        } catch (RuntimeException $e) {
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 503);
-        }
+        $session = $this->runner->createSession($agent);
 
         if (($session['provider'] ?? null) !== 'livekit') {
             // The runner ignored our transport pin (or is misconfigured).
-            // Tear the session down and surface a clear error.
             if (! empty($session['session_id'])) {
                 $this->runner->terminateSession((string) $session['session_id']);
             }
 
-            return response()->json([
-                'message' => 'El runner devolvió un transporte no soportado: '
-                    .($session['provider'] ?? 'unknown').'. Esta UI solo soporta LiveKit.',
-            ], 503);
+            abort(503, 'El runner devolvió un transporte no soportado: '
+                .($session['provider'] ?? 'unknown').'. Esta UI solo soporta LiveKit.');
         }
 
         return response()->json([
+            'success' => true,
+            'message' => 'Sesión de prueba creada exitosamente.',
             'data' => $session,
         ], 201);
     }

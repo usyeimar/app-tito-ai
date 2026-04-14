@@ -1,0 +1,161 @@
+{
+    "version": "1.0.0",
+    "agent_id": "alloy-sip-001",
+    "tenant_id": "alloy-finance-colombia",
+    "callback_url": "https://webhook.alloy.finance/runners/sip-events",
+    "metadata": {
+        "name": "Sofía - Línea Telefónica Alloy",
+        "slug": "sofia-alloy-sip",
+        "description": "Agente de voz para línea telefónica corporativa. Atiende llamadas entrantes vía SIP trunk (Asterisk + ARI).",
+        "tags": ["sip", "telephony", "asterisk", "ari", "inbound"],
+        "language": "es-CO"
+    },
+    "architecture": {
+        "type": "pipeline",
+        "config": {
+            "resilience": {
+                "type": "failover",
+                "fallback_provider": "openai",
+                "fallback_model": "gpt-4o-mini",
+                "health_check_interval_ms": 5000
+            }
+        }
+    },
+    "brain": {
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "config": {
+                "temperature": 0.3,
+                "max_tokens": 1024,
+                "top_p": 0.9
+            },
+            "instructions": "Eres Sofía, recepcionista virtual de Alloy Finance.\n\n# Canal\nEstás atendiendo una llamada telefónica (audio 8kHz). El cliente no te ve, así que todo debe ser verbal.\n\n# Restricciones del canal telefónico\n- NUNCA digas URLs, emails largos ni caracteres especiales. Ofrece enviarlos por SMS o correo.\n- Habla CLARO y SIN abreviaturas. Lee números dígito por dígito si es sensible.\n- Usa pausas naturales entre frases para evitar cortes.\n- Si detectas ruido de fondo persistente, pide amablemente repetir.\n\n# Tareas\n1. Identificar motivo de la llamada.\n2. Derivar a ventas, soporte técnico, o cobranza según el caso.\n3. Tomar mensaje si el área destino no está disponible.\n4. Transferir a agente humano con `transferir_a_humano` cuando el cliente lo pida.\n\n# Estilo\n- Español colombiano, trato de usted.\n- Máximo 2 oraciones por turno — es llamada, no chat.\n- Tono cálido pero profesional."
+        },
+        "context": {
+            "enabled": true,
+            "strategy": "summarize",
+            "max_tokens": 3000,
+            "min_messages": 4
+        },
+        "localization": {
+            "default_locale": "es-CO",
+            "timezone": "America/Bogota",
+            "currency": "COP",
+            "number_format": "dot_decimal"
+        }
+    },
+    "capabilities": {
+        "tools": [
+            {
+                "name": "tomar_mensaje",
+                "processing_message": "anotando su mensaje",
+                "description": "Registra un mensaje del cliente para ser devuelto por un agente humano.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "nombre": {"type": "string", "description": "Nombre de quien llama"},
+                        "telefono_callback": {"type": "string", "description": "Número al que devolver la llamada"},
+                        "area": {
+                            "type": "string",
+                            "enum": ["ventas", "soporte", "cobranza", "gerencia"],
+                            "description": "Área destino"
+                        },
+                        "mensaje": {"type": "string", "description": "Resumen del motivo"}
+                    },
+                    "required": ["nombre", "telefono_callback", "area", "mensaje"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "transferir_a_humano",
+                "processing_message": "le transfiero con un asesor, un momento por favor",
+                "description": "Transfiere la llamada SIP a una extensión de agente humano.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "extension": {
+                            "type": "string",
+                            "description": "Extensión Asterisk del asesor (ej: 2001, 2002)"
+                        },
+                        "motivo": {"type": "string", "description": "Contexto para el asesor"}
+                    },
+                    "required": ["extension", "motivo"]
+                },
+                "disabled": false
+            },
+            {
+                "name": "enviar_sms",
+                "processing_message": "enviando la información por mensaje de texto",
+                "description": "Envía un SMS con información solicitada (URLs, direcciones, confirmaciones).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "telefono": {"type": "string"},
+                        "contenido": {"type": "string"}
+                    },
+                    "required": ["telefono", "contenido"]
+                },
+                "disabled": false
+            }
+        ]
+    },
+    "runtime_profiles": {
+        "transport": {
+            "provider": "asterisk_ari"
+        },
+        "stt": {
+            "provider": "deepgram",
+            "model": "nova-2-phonecall",
+            "language": "es",
+            "latency_mode": "interactive"
+        },
+        "tts": {
+            "provider": "cartesia",
+            "voice_id": "79a125e8-cd45-4c13-8a67-188112f4dd22",
+            "speed": 1.0
+        },
+        "vad": {
+            "provider": "silero",
+            "params": {
+                "confidence": 0.7,
+                "start_secs": 0.4,
+                "stop_secs": 0.25,
+                "min_volume": 0.6
+            }
+        },
+        "behavior": {
+            "interruptibility": true,
+            "turn_detection_strategy": "smart",
+            "smart_turn_stop_secs": 1.2,
+            "initial_action": "SPEAK_FIRST",
+            "streaming": true,
+            "user_mute_strategies": ["until_first_bot_complete"]
+        },
+        "session_limits": {
+            "inactivity_timeout": {
+                "enabled": true,
+                "steps": [
+                    {
+                        "wait_seconds": 12,
+                        "message": ["¿Sigue en línea?", "¿Me escucha?"]
+                    },
+                    {
+                        "wait_seconds": 20,
+                        "message": ["Parece que la línea se cortó."]
+                    }
+                ],
+                "final_message": "No logro escucharle. Por favor llame nuevamente. Gracias."
+            },
+            "max_duration_seconds": 1200
+        }
+    },
+    "compliance": {
+        "pii_redaction": true,
+        "record_audio": true
+    },
+    "observability": {
+        "log_level": "INFO",
+        "metrics_enabled": true
+    }
+}
