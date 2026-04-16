@@ -12,14 +12,14 @@ class AgentService
 {
     public function getAll(string $tenantId): Collection
     {
-        return Agent::with(['settings', 'tools', 'channels'])
+        return Agent::with(['settings', 'tools'])
             ->orderBy('name')
             ->get();
     }
 
     public function findById(string $id): ?Agent
     {
-        return Agent::with(['settings', 'tools', 'channels'])
+        return Agent::with(['settings', 'tools'])
             ->where('id', $id)
             ->first();
     }
@@ -47,7 +47,7 @@ class AgentService
                 'observability_config' => $data['observability_config'] ?? [],
             ]);
 
-            return $agent->load(['settings', 'tools', 'channels']);
+            return $agent->load(['settings', 'tools']);
         });
     }
 
@@ -81,7 +81,7 @@ class AgentService
                 );
             }
 
-            return $agent->fresh(['settings', 'tools', 'channels']);
+            return $agent->fresh(['settings', 'tools']);
         });
     }
 

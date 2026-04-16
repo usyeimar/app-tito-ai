@@ -46,7 +46,7 @@ final class AgentConfigBuilder
             'runtime_profiles' => $this->runtimePayload($runtime, $agent),
             'architecture' => $architecture !== [] ? $architecture : null,
             'capabilities' => $this->capabilitiesPayload($capabilities, $agent),
-            'observability' => $observability !== [] ? $observability : null,
+            'observability' => $this->observabilityPayload($observability),
         ];
     }
 
@@ -58,7 +58,7 @@ final class AgentConfigBuilder
     {
         $llm = (array) Arr::get($brain, 'llm', []);
 
-        return [
+        $payload = [
             'llm' => [
                 'provider' => (string) Arr::get($llm, 'provider', Arr::get($brain, 'provider', 'openai')),
                 'model' => (string) Arr::get($llm, 'model', Arr::get($brain, 'model', 'gpt-4o-mini')),
@@ -98,6 +98,16 @@ final class AgentConfigBuilder
                 'enabled' => false,
             ]),
         ];
+
+        // knowledge_base — explicit from brain_config or inferred from agent relation
+        $knowledgeBase = Arr::get($brain, 'knowledge_base');
+        if ($knowledgeBase !== null) {
+            $payload['knowledge_base'] = $knowledgeBase;
+        } elseif ($agent->knowledge_base_id !== null) {
+            $payload['knowledge_base'] = ['id' => $agent->knowledge_base_id];
+        }
+
+        return $payload;
     }
 
     /**
@@ -167,6 +177,22 @@ final class AgentConfigBuilder
 
         return [
             'tools' => array_values($configuredTools),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $observability
+     * @return array<string, mixed>|null
+     */
+    private function observabilityPayload(array $observability): ?array
+    {
+        if ($observability === []) {
+            return null;
+        }
+
+        return [
+            'log_level' => (string) Arr::get($observability, 'log_level', 'INFO'),
+            'metrics_enabled' => (bool) Arr::get($observability, 'metrics_enabled', false),
         ];
     }
 

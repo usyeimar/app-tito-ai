@@ -8,21 +8,22 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class AgentSessionTranscript extends Model
+class AgentSessionAudio extends Model
 {
     use HasUlids;
 
-    protected $table = 'agent_session_transcripts';
+    protected $table = 'agent_session_audios';
 
     protected $fillable = [
         'agent_session_id',
-        'role',
-        'content',
-        'timestamp',
+        'name',
+        'path',
+        'mime_type',
+        'size',
     ];
 
     protected $casts = [
-        'timestamp' => 'datetime',
+        'size' => 'integer',
     ];
 
     public function session(): BelongsTo
