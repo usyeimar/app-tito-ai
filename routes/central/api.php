@@ -42,7 +42,7 @@ Route::prefix('auth')->group(function () {
         ->name('auth.invitations.resolve')
         ->middleware('signed');
 
-    Route::middleware('auth:central-api')->group(function () {
+    Route::middleware(['auth:central-api'])->group(function () {
         Route::prefix('me')->group(function () {
             Route::get('/', [AuthenticationController::class, 'me']);
             Route::patch('/', [ProfileController::class, 'update']);
