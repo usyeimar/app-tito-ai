@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureCookieAuthOrigin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\InjectAccessTokenFromCookie;
+use App\Http\Middleware\RestoreCentralAuth;
 use App\Http\Middleware\ShareWorkspacesWithInertia;
 use App\Http\Middleware\WrapApiResponses;
 use Illuminate\Foundation\Application;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->web(append: [
+            RestoreCentralAuth::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

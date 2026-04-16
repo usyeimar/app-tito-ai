@@ -6,6 +6,7 @@ use App\Actions\Fortify\AuthenticateUser;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Responses\LoginResponse;
+use App\Http\Responses\LogoutResponse;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -26,6 +27,10 @@ class FortifyServiceProvider extends ServiceProvider
         $this->app->bind(
             \Laravel\Fortify\Contracts\LoginResponse::class,
             LoginResponse::class
+        );
+        $this->app->bind(
+            \Laravel\Fortify\Contracts\LogoutResponse::class,
+            LogoutResponse::class
         );
     }
 
