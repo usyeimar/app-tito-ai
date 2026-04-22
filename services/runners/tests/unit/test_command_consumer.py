@@ -1,12 +1,11 @@
 """Tests for the Redis command consumer."""
 
-import asyncio
 import json
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
-from app.services.command_consumer import CommandConsumer, COMMANDS_KEY, RESPONSE_KEY_PREFIX
+from app.services.command_consumer import CommandConsumer, COMMANDS_KEY
 
 
 @pytest_asyncio.fixture
@@ -18,98 +17,67 @@ async def consumer():
 
 
 @pytest.mark.asyncio
-async def test_handle_message_dispatches_create(consumer):
-    """session.create command should call _handle_create_session and send response."""
-    with patch.object(consumer, "_handle_create_session", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = {
-            "session_id": "sess_test123",
+async def test_handle_terminate(consumer):
+    """session.terminate should stop the task and clean up."""
+    with patch("app.services.command_consumer.session_manager") as mock_sm, \
+         patch("app.services.command_consumer.task_manager") as mock_tm:
+        mock_sm.get_session = AsyncMock(return_value={
             "room_name": "room_test",
             "provider": "livekit",
-            "url": "wss://example.com",
-            "access_token": "token",
-            "context": {},
-        }
+        })
+        mock_tm.stop = AsyncMock()
 
         message = json.dumps({
             "request_id": "req_001",
-            "command": "session.create",
-            "payload": {"agent_id": "agent_1", "tenant_id": "tenant_1"},
-        })
-
-        await consumer._handle_message(message)
-
-        mock_create.assert_called_once()
-        consumer.redis.lpush.assert_called_once()
-        key = consumer.redis.lpush.call_args[0][0]
-        assert key == f"{RESPONSE_KEY_PREFIX}req_001"
-
-
-@pytest.mark.asyncio
-async def test_handle_message_dispatches_terminate(consumer):
-    """session.terminate should call _handle_terminate_session without response."""
-    with patch.object(consumer, "_handle_terminate_session", new_callable=AsyncMock) as mock_term:
-        message = json.dumps({
-            "request_id": "req_002",
             "command": "session.terminate",
             "payload": {"session_id": "sess_kill"},
-            "async": True,
         })
 
         await consumer._handle_message(message)
 
-        mock_term.assert_called_once_with({"session_id": "sess_kill"})
-        consumer.redis.lpush.assert_not_called()
+        mock_sm.get_session.assert_called_once_with("sess_kill")
+        mock_tm.stop.assert_called_once_with("sess_kill")
 
 
 @pytest.mark.asyncio
-async def test_handle_message_sends_error_on_failure(consumer):
-    """Failed commands should send error response."""
-    with patch.object(consumer, "_dispatch", new_callable=AsyncMock) as mock_dispatch:
-        mock_dispatch.side_effect = RuntimeError("Runner at capacity")
+async def test_terminate_missing_session(consumer):
+    """Terminate for unknown session should log warning and skip."""
+    with patch("app.services.command_consumer.session_manager") as mock_sm, \
+         patch("app.services.command_consumer.task_manager") as mock_tm:
+        mock_sm.get_session = AsyncMock(return_value=None)
+        mock_tm.stop = AsyncMock()
 
         message = json.dumps({
-            "request_id": "req_003",
-            "command": "session.create",
-            "payload": {},
+            "command": "session.terminate",
+            "payload": {"session_id": "sess_ghost"},
         })
 
         await consumer._handle_message(message)
 
-        consumer.redis.lpush.assert_called_once()
-        raw_response = consumer.redis.lpush.call_args[0][1]
-        response = json.loads(raw_response)
-        assert response["error"] == "Runner at capacity"
+        mock_tm.stop.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_handle_message_ignores_invalid_json(consumer):
-    """Invalid JSON should be logged and skipped."""
-    await consumer._handle_message("not valid json {{{")
-    consumer.redis.lpush.assert_not_called()
+async def test_ignores_invalid_json(consumer):
+    """Invalid JSON should be skipped."""
+    await consumer._handle_message("not json {{{")
 
 
 @pytest.mark.asyncio
-async def test_handle_message_unknown_command(consumer):
-    """Unknown commands should send error response."""
+async def test_unknown_command(consumer):
+    """Unknown commands should be logged and skipped."""
     message = json.dumps({
-        "request_id": "req_004",
-        "command": "unknown.command",
+        "command": "unknown.thing",
         "payload": {},
     })
-
     await consumer._handle_message(message)
-
-    consumer.redis.lpush.assert_called_once()
-    raw_response = consumer.redis.lpush.call_args[0][1]
-    response = json.loads(raw_response)
-    assert "Unknown command" in response["error"]
 
 
 @pytest.mark.asyncio
-async def test_listen_keys_includes_host_specific(consumer):
+async def test_listen_keys_includes_host(consumer):
     """Listen keys should include host-specific key first."""
     with patch("app.services.command_consumer.settings") as mock_settings:
-        mock_settings.HOST_ID = "runner-abc123"
+        mock_settings.HOST_ID = "runner-abc"
         keys = consumer._listen_keys()
-        assert keys[0] == f"{COMMANDS_KEY}:runner-abc123"
+        assert keys[0] == f"{COMMANDS_KEY}:runner-abc"
         assert keys[1] == COMMANDS_KEY

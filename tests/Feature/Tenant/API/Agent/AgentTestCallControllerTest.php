@@ -2,6 +2,7 @@
 
 use App\Models\Tenant\Agent\Agent;
 use App\Services\Tenant\Agent\Runner\RunnerCommandBus;
+use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
 
 describe('Agent Test Call', function () {
@@ -16,24 +17,19 @@ describe('Agent Test Call', function () {
             $response->assertUnauthorized();
         });
 
-        it('creates a livekit session through the runner', function () {
+        it('creates a livekit session via HTTP', function () {
             $agent = Agent::factory()->create();
 
-            $this->mock(RunnerCommandBus::class, function (MockInterface $mock) {
-                $mock->shouldReceive('dispatch')
-                    ->with('session.create', Mockery::type('array'))
-                    ->once()
-                    ->andReturn([
-                        'data' => [
-                            'session_id' => 'sess_123',
-                            'room_name' => 'room_abc',
-                            'provider' => 'livekit',
-                            'url' => 'wss://example.livekit.cloud',
-                            'access_token' => 'token-xyz',
-                            'context' => [],
-                        ],
-                    ]);
-            });
+            Http::fake([
+                '*/api/v1/sessions/*' => Http::response([
+                    'session_id' => 'sess_123',
+                    'room_name' => 'room_abc',
+                    'provider' => 'livekit',
+                    'ws_url' => 'wss://example.livekit.cloud',
+                    'access_token' => 'token-xyz',
+                    'context' => [],
+                ], 201),
+            ]);
 
             $response = $this->actingAs($this->user, 'tenant-api')
                 ->postJson($this->tenantApiUrl("ai/agents/{$agent->id}/test-call"));
@@ -44,24 +40,19 @@ describe('Agent Test Call', function () {
             $response->assertJsonPath('data.provider', 'livekit');
         });
 
-        it('creates a daily session through the runner', function () {
+        it('creates a daily session via HTTP', function () {
             $agent = Agent::factory()->create();
 
-            $this->mock(RunnerCommandBus::class, function (MockInterface $mock) {
-                $mock->shouldReceive('dispatch')
-                    ->with('session.create', Mockery::type('array'))
-                    ->once()
-                    ->andReturn([
-                        'data' => [
-                            'session_id' => 'sess_daily_456',
-                            'room_name' => 'room_daily',
-                            'provider' => 'daily',
-                            'url' => 'https://example.daily.co/room_daily',
-                            'access_token' => 'daily-token-xyz',
-                            'context' => [],
-                        ],
-                    ]);
-            });
+            Http::fake([
+                '*/api/v1/sessions/*' => Http::response([
+                    'session_id' => 'sess_daily_456',
+                    'room_name' => 'room_daily',
+                    'provider' => 'daily',
+                    'ws_url' => 'https://example.daily.co/room_daily',
+                    'access_token' => 'daily-token-xyz',
+                    'context' => [],
+                ], 201),
+            ]);
 
             $response = $this->actingAs($this->user, 'tenant-api')
                 ->postJson($this->tenantApiUrl("ai/agents/{$agent->id}/test-call"));
@@ -75,20 +66,19 @@ describe('Agent Test Call', function () {
         it('aborts when runner returns an unsupported transport', function () {
             $agent = Agent::factory()->create();
 
+            Http::fake([
+                '*/api/v1/sessions/*' => Http::response([
+                    'session_id' => 'sess_999',
+                    'room_name' => '',
+                    'provider' => 'twilio',
+                    'ws_url' => '',
+                    'access_token' => '',
+                    'context' => [],
+                ], 201),
+            ]);
+
             $this->mock(RunnerCommandBus::class, function (MockInterface $mock) {
-                $mock->shouldReceive('dispatch')
-                    ->once()
-                    ->andReturn([
-                        'data' => [
-                            'session_id' => 'sess_999',
-                            'room_name' => '',
-                            'provider' => 'twilio',
-                            'url' => '',
-                            'access_token' => '',
-                            'context' => [],
-                        ],
-                    ]);
-                $mock->shouldReceive('dispatchAsync')->once();
+                $mock->shouldReceive('dispatch')->once();
             });
 
             $response = $this->actingAs($this->user, 'tenant-api')
@@ -103,8 +93,10 @@ describe('Agent Test Call', function () {
             $agent = Agent::factory()->create();
 
             $this->mock(RunnerCommandBus::class, function (MockInterface $mock) {
-                $mock->shouldReceive('dispatchAsync')
-                    ->with('session.terminate', Mockery::on(fn ($payload) => $payload['session_id'] === 'sess_terminate'))
+                $mock->shouldReceive('dispatch')
+                    ->with('session.terminate', Mockery::on(
+                        fn ($p) => $p['session_id'] === 'sess_terminate'
+                    ))
                     ->once();
             });
 

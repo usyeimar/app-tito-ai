@@ -5,28 +5,35 @@ declare(strict_types=1);
 namespace App\Services\Tenant\Agent\Runner;
 
 use App\Models\Tenant\Agent\Agent;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
- * Client for the Tito AI Runners microservice.
+ * Hybrid client for the Tito AI Runners microservice.
  *
- * Dispatches session commands via Redis (RunnerCommandBus).
- * The runner consumes commands from the Redis queue, processes them,
- * and pushes responses back for Laravel to read.
+ * - HTTP for synchronous operations (session.create) — needs immediate response.
+ * - Redis for async fire-and-forget commands (session.terminate).
  *
  * @see services/runners/app/api/v1/sessions.py
  */
 final class RunnerClient
 {
+    private const MAX_RETRIES = 3;
+
+    private const BASE_DELAY_MS = 200;
+
     public function __construct(
         private readonly AgentConfigBuilder $configBuilder,
         private readonly RunnerCommandBus $commandBus,
         private readonly CircuitBreaker $circuitBreaker,
+        private readonly ?RunnerRegistry $runnerRegistry = null,
     ) {}
 
     /**
-     * Create a new voice session for the given agent.
+     * Create a new voice session via HTTP (synchronous).
      *
      * @return array{
      *     session_id: string,
@@ -43,40 +50,51 @@ final class RunnerClient
 
         $config = $this->configBuilder->build($agent);
 
-        try {
-            $response = $this->commandBus->dispatch('session.create', $config);
-            $this->circuitBreaker->recordSuccess();
-        } catch (RuntimeException $e) {
-            $this->circuitBreaker->recordFailure();
-            Log::warning('Runner session create failed', ['error' => $e->getMessage()]);
-            throw $e;
-        }
+        return $this->withRetry(function () use ($config): array {
+            $response = $this->httpRequest()
+                ->post('/api/v1/sessions/', $config);
 
-        $data = $response['data'] ?? $response;
+            if ($response->failed()) {
+                Log::warning('Runner session create failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
 
-        return [
-            'session_id' => (string) ($data['session_id'] ?? ''),
-            'room_name' => (string) ($data['room_name'] ?? ''),
-            'provider' => (string) ($data['provider'] ?? ''),
-            'url' => (string) ($data['ws_url'] ?? $data['url'] ?? ''),
-            'access_token' => (string) ($data['access_token'] ?? ''),
-            'context' => (array) ($data['context'] ?? []),
-        ];
+                $message = (string) ($response->json('detail.message')
+                    ?? $response->json('message')
+                    ?? $response->json('detail')
+                    ?? 'Failed to create runner session');
+
+                throw new RuntimeException($message);
+            }
+
+            /** @var array<string, mixed> $payload */
+            $payload = $response->json();
+
+            return [
+                'session_id' => (string) ($payload['session_id'] ?? ''),
+                'room_name' => (string) ($payload['room_name'] ?? ''),
+                'provider' => (string) ($payload['provider'] ?? ''),
+                'url' => (string) ($payload['ws_url'] ?? $payload['url'] ?? ''),
+                'access_token' => (string) ($payload['access_token'] ?? ''),
+                'context' => (array) ($payload['context'] ?? []),
+            ];
+        });
     }
 
     /**
-     * Terminate a session.
+     * Terminate a session via Redis (async, fire-and-forget).
      */
     public function terminateSession(string $sessionId, ?string $hostId = null): bool
     {
         try {
-            $this->commandBus->dispatchAsync('session.terminate', [
+            $this->commandBus->dispatch('session.terminate', [
                 'session_id' => $sessionId,
                 'host_id' => $hostId,
             ]);
 
             return true;
-        } catch (RuntimeException $e) {
+        } catch (\Throwable $e) {
             Log::warning('Runner session terminate failed', [
                 'session_id' => $sessionId,
                 'error' => $e->getMessage(),
@@ -86,6 +104,45 @@ final class RunnerClient
         }
     }
 
+    /**
+     * @template T
+     *
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    private function withRetry(callable $callback): mixed
+    {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
+            try {
+                $result = $callback();
+                $this->circuitBreaker->recordSuccess();
+
+                return $result;
+            } catch (ConnectionException $e) {
+                $lastException = $e;
+                $this->circuitBreaker->recordFailure();
+                Log::warning('Runner connection failed', [
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (RuntimeException $e) {
+                $this->circuitBreaker->recordFailure();
+                throw $e;
+            }
+
+            if ($attempt < self::MAX_RETRIES) {
+                usleep(self::BASE_DELAY_MS * (2 ** ($attempt - 1)) * 1000);
+            }
+        }
+
+        throw new RuntimeException(
+            'Runner unavailable after '.self::MAX_RETRIES.' attempts: '.$lastException?->getMessage(),
+            previous: $lastException,
+        );
+    }
+
     private function ensureAvailable(): void
     {
         if (! $this->circuitBreaker->isAvailable()) {
@@ -93,5 +150,32 @@ final class RunnerClient
                 'Runner service circuit breaker is open. Service temporarily unavailable.'
             );
         }
+    }
+
+    private function getRunnerUrl(): string
+    {
+        if (config('runners.use_registry', false) && $this->runnerRegistry) {
+            $runner = $this->runnerRegistry->getAvailableRunner();
+            if ($runner && ($runner['url'] ?? '')) {
+                return $runner['url'];
+            }
+        }
+
+        return rtrim((string) config('runners.base_url', 'http://localhost:8000'), '/');
+    }
+
+    private function httpRequest(): PendingRequest
+    {
+        $request = Http::baseUrl($this->getRunnerUrl())
+            ->timeout((int) config('runners.timeout', 15))
+            ->acceptJson()
+            ->asJson();
+
+        $apiKey = config('runners.api_key');
+        if (is_string($apiKey) && $apiKey !== '') {
+            $request = $request->withToken($apiKey);
+        }
+
+        return $request;
     }
 }
