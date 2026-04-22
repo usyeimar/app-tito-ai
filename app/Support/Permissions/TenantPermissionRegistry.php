@@ -20,16 +20,6 @@ class TenantPermissionRegistry
             'destructive' => true,
             'management' => false,
         ],
-        'execute' => [
-            'label' => 'Execute',
-            'destructive' => false,
-            'management' => false,
-        ],
-        'approve' => [
-            'label' => 'Approve',
-            'destructive' => false,
-            'management' => true,
-        ],
     ];
 
     private const array DEFAULT_ACTIONS = ['view', 'manage', 'delete'];
@@ -44,31 +34,14 @@ class TenantPermissionRegistry
         ['key' => 'activity', 'label' => 'Activity'],
         ['key' => 'vendor_company', 'label' => 'Vendor Companies'],
         ['key' => 'project', 'label' => 'Projects'],
-        ['key' => 'proposal', 'label' => 'Proposals'],
-        ['key' => 'proposal_change_order', 'label' => 'Proposal Change Orders'],
-        ['key' => 'service_catalog', 'label' => 'Service Catalog'],
-        ['key' => 'formula', 'label' => 'Formulas'],
+        ['key' => 'agent', 'label' => 'Agents'],
+        ['key' => 'trunk', 'label' => 'Trunks'],
+        ['key' => 'knowledge_base', 'label' => 'Knowledge Bases'],
         ['key' => 'file', 'label' => 'Files'],
-        ['key' => 'email_template', 'label' => 'Email Templates'],
-        ['key' => 'document_template', 'label' => 'Document Templates'],
-        ['key' => 'outbound_email', 'label' => 'Outbound Emails'],
-        [
-            'key' => 'marketing_campaign',
-            'label' => 'Marketing Campaigns',
-            'actions' => ['view', 'manage', 'delete', 'execute'],
-        ],
-        ['key' => 'marketing_suppression', 'label' => 'Marketing Suppressions'],
-        ['key' => 'ring_central', 'label' => 'RingCentral'],
         ['key' => 'document_signing', 'label' => 'Document Signing'],
         ['key' => 'tenant', 'label' => 'Tenant'],
         ['key' => 'metadata', 'label' => 'Metadata'],
         ['key' => 'system_configurations', 'label' => 'System Configurations'],
-        ['key' => 'resources', 'label' => 'Resources'],
-        [
-            'key' => 'workflow',
-            'label' => 'Workflows',
-            'actions' => ['view', 'manage', 'delete', 'execute', 'approve'],
-        ],
     ];
 
     /**

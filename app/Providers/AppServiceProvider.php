@@ -186,19 +186,6 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute($limit)->by($userKey.'|'.$fileId.'|'.$request->ip());
         });
 
-        RateLimiter::for('tenant.email_template_assets.upload', function (Request $request): Limit {
-            $limit = max(1, (int) config('email_template_assets.rate_limits.upload_per_minute', 30));
-            $userKey = $request->user()?->getKey() ?? 'guest';
-
-            return Limit::perMinute($limit)->by($userKey.'|'.$request->ip());
-        });
-
-        RateLimiter::for('tenant.proposal_render_assets.upload', function (Request $request): Limit {
-            $limit = max(1, (int) config('proposal_render_assets.rate_limits.upload_per_minute', 30));
-            $userKey = $request->user()?->getKey() ?? 'guest';
-
-            return Limit::perMinute($limit)->by($userKey.'|'.$request->ip());
-        });
     }
 
     /**
@@ -233,7 +220,6 @@ class AppServiceProvider extends ServiceProvider
      */
     private function configureAuthNotifications(): void
     {
-
 
         VerifyEmail::toMailUsing(function (object $notifiable, string $url): MailMessage {
             return (new MailMessage)
