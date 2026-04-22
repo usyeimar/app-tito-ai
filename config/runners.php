@@ -28,6 +28,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Redis Communication
+    |--------------------------------------------------------------------------
+    |
+    | Laravel dispatches commands to runners via Redis queues instead of HTTP.
+    | The runner BRPOPs from `runner:commands` and pushes responses to
+    | `runner:responses:{request_id}`.
+    |
+    */
+    'redis' => [
+        'connection' => env('TITO_RUNNERS_REDIS_CONNECTION', 'default'),
+        'response_timeout' => (int) env('TITO_RUNNERS_RESPONSE_TIMEOUT', 15),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Runner Registry (Load Balancing)
     |--------------------------------------------------------------------------
     |

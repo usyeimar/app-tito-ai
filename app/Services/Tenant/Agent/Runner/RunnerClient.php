@@ -5,39 +5,28 @@ declare(strict_types=1);
 namespace App\Services\Tenant\Agent\Runner;
 
 use App\Models\Tenant\Agent\Agent;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
- * HTTP client for the Tito AI Runners FastAPI microservice.
+ * Client for the Tito AI Runners microservice.
  *
- * Responsible for creating, listing and terminating voice agent sessions.
- * The runner is the only component that talks to LiveKit / Daily directly.
- *
- * Includes circuit breaker and retry with exponential backoff.
+ * Dispatches session commands via Redis (RunnerCommandBus).
+ * The runner consumes commands from the Redis queue, processes them,
+ * and pushes responses back for Laravel to read.
  *
  * @see services/runners/app/api/v1/sessions.py
  */
 final class RunnerClient
 {
-    private const MAX_RETRIES = 3;
-
-    private const BASE_DELAY_MS = 200;
-
     public function __construct(
         private readonly AgentConfigBuilder $configBuilder,
+        private readonly RunnerCommandBus $commandBus,
         private readonly CircuitBreaker $circuitBreaker,
-        private readonly ?RunnerRegistry $runnerRegistry = null,
     ) {}
 
     /**
      * Create a new voice session for the given agent.
-     *
-     * The runner decides which transport (livekit/daily) to use based on
-     * its own configuration — Laravel never sends transport preference.
      *
      * @return array{
      *     session_id: string,
@@ -54,100 +43,47 @@ final class RunnerClient
 
         $config = $this->configBuilder->build($agent);
 
-        return $this->withRetry(function () use ($config): array {
-            $response = $this->request()
-                ->post('/api/v1/sessions/', $config);
+        try {
+            $response = $this->commandBus->dispatch('session.create', $config);
+            $this->circuitBreaker->recordSuccess();
+        } catch (RuntimeException $e) {
+            $this->circuitBreaker->recordFailure();
+            Log::warning('Runner session create failed', ['error' => $e->getMessage()]);
+            throw $e;
+        }
 
-            if ($response->failed()) {
-                Log::warning('Runner session create failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
+        $data = $response['data'] ?? $response;
 
-                $message = (string) ($response->json('detail.message')
-                    ?? $response->json('message')
-                    ?? $response->json('detail')
-                    ?? 'Failed to create runner session');
-
-                throw new RuntimeException($message);
-            }
-
-            /** @var array<string, mixed> $payload */
-            $payload = $response->json();
-
-            return [
-                'session_id' => (string) ($payload['session_id'] ?? ''),
-                'room_name' => (string) ($payload['room_name'] ?? ''),
-                'provider' => (string) ($payload['provider'] ?? ''),
-                'url' => (string) ($payload['ws_url'] ?? $payload['url'] ?? ''),
-                'access_token' => (string) ($payload['access_token'] ?? ''),
-                'context' => (array) ($payload['context'] ?? []),
-            ];
-        });
+        return [
+            'session_id' => (string) ($data['session_id'] ?? ''),
+            'room_name' => (string) ($data['room_name'] ?? ''),
+            'provider' => (string) ($data['provider'] ?? ''),
+            'url' => (string) ($data['ws_url'] ?? $data['url'] ?? ''),
+            'access_token' => (string) ($data['access_token'] ?? ''),
+            'context' => (array) ($data['context'] ?? []),
+        ];
     }
 
     /**
-     * Terminate a session on the correct runner.
+     * Terminate a session.
      */
     public function terminateSession(string $sessionId, ?string $hostId = null): bool
     {
         try {
-            if ($hostId) {
-                $runner = $this->runnerRegistry?->getRunner($hostId);
-                if ($runner && ($runner['url'] ?? '')) {
-                    return $this->terminateOnRunner($runner['url'], $sessionId);
-                }
-            }
+            $this->commandBus->dispatchAsync('session.terminate', [
+                'session_id' => $sessionId,
+                'host_id' => $hostId,
+            ]);
 
-            $url = $this->getRunnerUrl();
+            return true;
+        } catch (RuntimeException $e) {
+            Log::warning('Runner session terminate failed', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+            ]);
 
-            return $url ? $this->terminateOnRunner($url, $sessionId) : false;
-        } catch (ConnectionException) {
             return false;
         }
-    }
-
-    /**
-     * Execute a callable with retry + exponential backoff + circuit breaker.
-     *
-     * @template T
-     *
-     * @param  callable(): T  $callback
-     * @return T
-     */
-    private function withRetry(callable $callback): mixed
-    {
-        $lastException = null;
-
-        for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
-            try {
-                $result = $callback();
-                $this->circuitBreaker->recordSuccess();
-
-                return $result;
-            } catch (ConnectionException $e) {
-                $lastException = $e;
-                $this->circuitBreaker->recordFailure();
-                Log::warning('Runner connection failed', [
-                    'attempt' => $attempt,
-                    'error' => $e->getMessage(),
-                ]);
-            } catch (RuntimeException $e) {
-                // Don't retry business logic errors (4xx)
-                $this->circuitBreaker->recordFailure();
-                throw $e;
-            }
-
-            if ($attempt < self::MAX_RETRIES) {
-                $delayMs = self::BASE_DELAY_MS * (2 ** ($attempt - 1));
-                usleep($delayMs * 1000);
-            }
-        }
-
-        throw new RuntimeException(
-            'Runner unavailable after '.self::MAX_RETRIES.' attempts: '.$lastException?->getMessage(),
-            previous: $lastException,
-        );
     }
 
     private function ensureAvailable(): void
@@ -157,55 +93,5 @@ final class RunnerClient
                 'Runner service circuit breaker is open. Service temporarily unavailable.'
             );
         }
-    }
-
-    private function getRunnerUrl(): ?string
-    {
-        if (config('runners.use_registry', false) && $this->runnerRegistry) {
-            $runner = $this->runnerRegistry->getAvailableRunner();
-            if ($runner && ($runner['url'] ?? '')) {
-                Log::debug('Using runner from registry', [
-                    'host_id' => $runner['host_id'] ?? 'unknown',
-                    'url' => $runner['url'],
-                    'active_sessions' => $runner['active_sessions'] ?? 0,
-                ]);
-
-                return $runner['url'];
-            }
-        }
-
-        return rtrim((string) config('runners.base_url', 'http://localhost:8000'), '/');
-    }
-
-    private function terminateOnRunner(string $baseUrl, string $sessionId): bool
-    {
-        try {
-            $response = Http::baseUrl($baseUrl)
-                ->timeout((int) config('runners.timeout', 15))
-                ->acceptJson()
-                ->asJson()
-                ->delete('/api/v1/sessions/'.urlencode($sessionId));
-
-            return $response->successful();
-        } catch (ConnectionException) {
-            return false;
-        }
-    }
-
-    private function request(): PendingRequest
-    {
-        $url = $this->getRunnerUrl();
-
-        $request = Http::baseUrl($url)
-            ->timeout((int) config('runners.timeout', 15))
-            ->acceptJson()
-            ->asJson();
-
-        $apiKey = config('runners.api_key');
-        if (is_string($apiKey) && $apiKey !== '') {
-            $request = $request->withToken($apiKey);
-        }
-
-        return $request;
     }
 }
