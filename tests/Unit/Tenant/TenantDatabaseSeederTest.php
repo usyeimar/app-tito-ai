@@ -4,6 +4,7 @@ use App\Jobs\Central\Tenancy\SeedDevelopmentTenantData;
 use Database\Seeders\Tenant\DevelopmentTenantDatabaseSeeder;
 use Database\Seeders\Tenant\PassportClientsSeeder;
 use Database\Seeders\Tenant\PermissionsSeeder;
+use Database\Seeders\Tenant\SystemConfigurationsSeeder;
 use Database\Seeders\Tenant\TenantDatabaseSeeder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Artisan;
@@ -21,7 +22,7 @@ it('only runs required tenant seeders when development seeders are disabled', fu
     $seeder->run();
 
     expect($seeder->calls)->toBe([
-        [PermissionsSeeder::class, PassportClientsSeeder::class],
+        [PermissionsSeeder::class, SystemConfigurationsSeeder::class, PassportClientsSeeder::class],
     ]);
 
     Bus::assertNothingDispatched();
@@ -38,7 +39,7 @@ it('dispatches development tenant seeders after the response for http provisioni
     $seeder->run();
 
     expect($seeder->calls)->toBe([
-        [PermissionsSeeder::class, PassportClientsSeeder::class],
+        [PermissionsSeeder::class, SystemConfigurationsSeeder::class, PassportClientsSeeder::class],
     ]);
 
     Bus::assertDispatchedAfterResponse(
@@ -58,8 +59,7 @@ it('falls back to inline development seeding when tenant context is unavailable'
     $seeder->run();
 
     expect($seeder->calls)->toBe([
-        [PermissionsSeeder::class, PassportClientsSeeder::class],
-        [DevelopmentTenantDatabaseSeeder::class],
+        [PermissionsSeeder::class, SystemConfigurationsSeeder::class, PassportClientsSeeder::class],
     ]);
 
     Bus::assertNotDispatched(SeedDevelopmentTenantData::class);
