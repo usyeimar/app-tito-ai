@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Agent",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Updated Agent Name\",\n  \"description\": \"Updated description\",\n  \"runtime_config\": {\n    \"behavior\": {\n      \"turn_detection_strategy\": \"smart\",\n      \"smart_turn_stop_secs\": 1.5,\n      \"ambient_sound\": {\n        \"audio\": \"/sounds/cafe.wav\",\n        \"volume\": 0.3,\n        \"enabled\": true\n      }\n    },\n    \"session_limits\": {\n      \"max_duration_seconds\": 600,\n      \"inactivity_timeout\": {\n        \"enabled\": true,\n        \"steps\": [\n          { \"wait_seconds\": 15, \"message\": [\"Are you still there?\"] },\n          { \"wait_seconds\": 10, \"message\": [\"I'll hang up if you don't respond.\"] }\n        ],\n        \"final_message\": \"Closing due to inactivity.\"\n      }\n    }\n  }\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}"]
+      },
+      "description": "Partially updates an agent. Only provided fields are modified.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentData, \"message\": \"Agent updated\" }\n```"
+    }
+  },
+  "order": 40
+}

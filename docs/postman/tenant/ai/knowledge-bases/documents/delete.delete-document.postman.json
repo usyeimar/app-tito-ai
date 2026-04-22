@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Document",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/documents/{{document_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "documents", "{{document_id}}"]
+      },
+      "description": "Deletes a document and all its versions.\n\n**Auth:** `knowledge_base.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 50
+}

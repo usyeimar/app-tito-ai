@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Tool",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/tools/{{tool_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "tools", "{{tool_id}}"]
+      },
+      "description": "Returns a single tool with HATEOAS `_links`.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentToolData }\n```"
+    }
+  },
+  "order": 30
+}

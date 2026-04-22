@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Tool",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/tools/{{tool_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "tools", "{{tool_id}}"]
+      },
+      "description": "Permanently removes a tool from the agent.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 50
+}

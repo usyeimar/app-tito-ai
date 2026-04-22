@@ -1,0 +1,5 @@
+{
+  "name": "Tools",
+  "description": "Agent tool management — webhooks, functions, and integrations attached to an agent.\n\nBase URL: `/{tenant}/api/ai/agents/{agent}/tools`\n\nAll responses include HATEOAS `_links`.",
+  "order": 20
+}

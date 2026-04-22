@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Trunk",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/trunks/{{trunk_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "trunks", "{{trunk_id}}"]
+      },
+      "description": "Permanently deletes a trunk and removes its Redis sync.\n\n**Auth:** `trunk.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 50
+}

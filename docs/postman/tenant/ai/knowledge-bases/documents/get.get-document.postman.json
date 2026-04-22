@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Document",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/documents/{{document_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "documents", "{{document_id}}"]
+      },
+      "description": "Returns a single document with its latest version content.\n\n**Auth:** `knowledge_base.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": DocumentData }\n```"
+    }
+  },
+  "order": 30
+}

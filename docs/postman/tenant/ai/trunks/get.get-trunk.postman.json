@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Trunk",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/trunks/{{trunk_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "trunks", "{{trunk_id}}"]
+      },
+      "description": "Returns a single trunk with full configuration.\n\n**Auth:** `trunk.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": TrunkData }\n```"
+    }
+  },
+  "order": 30
+}

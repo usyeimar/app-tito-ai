@@ -1,0 +1,5 @@
+{
+  "name": "Categories",
+  "description": "Knowledge base category management.\n\nBase URL: `/{tenant}/api/ai/knowledge-bases/{kb}/categories`",
+  "order": 10
+}

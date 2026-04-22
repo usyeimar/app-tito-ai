@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Category",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"knowledge_base_id\": \"{{knowledge_base_id}}\",\n  \"name\": \"Getting Started\",\n  \"parent_id\": null,\n  \"display_order\": 0\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/categories",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "categories"]
+      },
+      "description": "Creates a new category. Supports nesting via `parent_id`.\n\n**Required:** `knowledge_base_id`, `name`\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": CategoryData, \"message\": \"Knowledge base category created.\" }\n```"
+    }
+  },
+  "order": 20
+}

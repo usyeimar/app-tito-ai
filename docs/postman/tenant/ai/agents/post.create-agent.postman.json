@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Agent",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Support Agent\",\n  \"description\": \"Handles customer support inquiries\",\n  \"language\": \"es-CO\",\n  \"tags\": [\"support\", \"voice\"],\n  \"timezone\": \"America/Bogota\",\n  \"currency\": \"COP\",\n  \"number_format\": \"es_CO\",\n  \"knowledge_base_id\": null,\n  \"brain_config\": {\n    \"llm\": {\n      \"provider\": \"openai\",\n      \"model\": \"gpt-4o-mini\",\n      \"config\": { \"temperature\": 0.5, \"max_tokens\": 4096, \"top_p\": 0.9 },\n      \"instructions\": \"You are a helpful support agent.\"\n    }\n  },\n  \"runtime_config\": {\n    \"stt\": { \"provider\": \"deepgram\", \"model\": \"nova-2\" },\n    \"tts\": { \"provider\": \"cartesia\", \"voice_id\": \"79a125e8-cd45-4c13-8a67-188112f4dd22\" },\n    \"behavior\": {\n      \"interruptibility\": true,\n      \"initial_action\": \"SPEAK_FIRST\",\n      \"streaming\": true\n    }\n  },\n  \"from_scratch\": false\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents"]
+      },
+      "description": "Creates a new agent with brain, runtime, and capabilities configuration.\n\n**Auth:** `agent.manage` permission required.\n\n**Required fields:** `name`\n\n**Response:** `201 Created`\n```json\n{ \"data\": AgentData, \"message\": \"Agent created\" }\n```"
+    }
+  },
+  "order": 20
+}

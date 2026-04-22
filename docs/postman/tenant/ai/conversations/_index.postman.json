@@ -1,0 +1,5 @@
+{
+  "name": "Conversations",
+  "description": "Agent session (conversation) history — list, view, transcripts, and delete.\n\nBase URL: `/{tenant}/api/ai/conversations`\n\nConversations are created automatically by the runner via webhooks. This API is read-only + delete.\n\nAll responses include HATEOAS `_links`.",
+  "order": 30
+}

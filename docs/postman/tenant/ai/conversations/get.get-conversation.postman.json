@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Conversation",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/conversations/{{conversation_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "conversations", "{{conversation_id}}"]
+      },
+      "description": "Returns a single conversation with full metadata, including `duration_seconds`, `transcript_count`, and HATEOAS `_links` (self, agent, transcripts, audio, delete).\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{\n  \"data\": {\n    \"id\": \"01JT...\",\n    \"agent_id\": \"01JT...\",\n    \"agent_name\": \"Support Agent\",\n    \"channel\": \"web-widget\",\n    \"external_session_id\": \"sess_a1b2c3d4e5f6\",\n    \"status\": \"completed\",\n    \"metadata\": { \"duration_seconds\": 125.4, \"termination_reason\": null },\n    \"started_at\": \"2026-04-21T18:00:00+00:00\",\n    \"ended_at\": \"2026-04-21T18:02:05+00:00\",\n    \"duration_seconds\": 125,\n    \"transcript_count\": 12,\n    \"_links\": { \"self\": {...}, \"agent\": {...}, \"transcripts\": {...}, \"delete\": {...} }\n  }\n}\n```"
+    }
+  },
+  "order": 20
+}

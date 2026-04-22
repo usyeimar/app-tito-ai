@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Trunk",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Main SIP Trunk\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"mode\": \"inbound\",\n  \"status\": \"active\",\n  \"sip_host\": \"sip.provider.com\",\n  \"sip_port\": 5060,\n  \"max_concurrent_calls\": 10,\n  \"codecs\": [\"ulaw\", \"alaw\", \"opus\"],\n  \"inbound_auth\": {\n    \"auth_type\": \"ip\",\n    \"allowed_ips\": [\"203.0.113.0/24\"]\n  },\n  \"routes\": [\n    {\n      \"pattern\": \"_X.\",\n      \"agent_id\": \"{{agent_id}}\",\n      \"priority\": 1,\n      \"enabled\": true\n    }\n  ]\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/trunks",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "trunks"]
+      },
+      "description": "Creates a new SIP trunk.\n\n**Modes:** `inbound` (receive calls), `register` (register with provider), `outbound` (make calls).\n\n**Auth types:** `ip` (whitelist IPs) or `userpass` (username/password).\n\n**Routes:** Dialplan-style patterns (`_X.` matches any number). Each route maps to an agent with a priority.\n\n**Auth:** `trunk.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": TrunkData, \"message\": \"Trunk created\" }\n```"
+    }
+  },
+  "order": 20
+}

@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Knowledge Base",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Product Documentation\",\n  \"description\": \"All product-related knowledge for support agents\",\n  \"is_public\": false\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases"]
+      },
+      "description": "Creates a new knowledge base. A slug is auto-generated from the name.\n\n**Required:** `name`\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": KnowledgeBaseData, \"message\": \"Knowledge base created.\" }\n```"
+    }
+  },
+  "order": 20
+}

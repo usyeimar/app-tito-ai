@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Tool",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"check_order_status\",\n  \"description\": \"Checks the status of a customer order by order ID.\",\n  \"parameters\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"order_id\": {\n        \"type\": \"string\",\n        \"description\": \"The order ID to look up\"\n      }\n    },\n    \"required\": [\"order_id\"]\n  },\n  \"is_active\": true\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/tools",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "tools"]
+      },
+      "description": "Attaches a new tool to the agent. The `parameters` field follows the OpenAI function calling JSON Schema format.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": AgentToolData, \"message\": \"Tool created.\", \"_links\": {...} }\n```"
+    }
+  },
+  "order": 20
+}

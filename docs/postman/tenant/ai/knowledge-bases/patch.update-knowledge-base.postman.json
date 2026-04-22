@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Knowledge Base",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Updated KB Name\",\n  \"is_public\": true\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}"]
+      },
+      "description": "Partially updates a knowledge base.\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": KnowledgeBaseData, \"message\": \"Knowledge base updated.\" }\n```"
+    }
+  },
+  "order": 40
+}

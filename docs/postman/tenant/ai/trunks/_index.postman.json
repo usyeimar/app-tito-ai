@@ -1,0 +1,5 @@
+{
+  "name": "Trunks",
+  "description": "SIP trunk management — inbound, outbound, and register modes.\n\nBase URL: `/{tenant}/api/ai/trunks`\n\nTrunks connect agents to telephony via Asterisk/SIP. Each trunk can have multiple routes with pattern matching and priority.",
+  "order": 40
+}

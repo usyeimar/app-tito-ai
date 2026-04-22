@@ -1,0 +1,5 @@
+{
+  "name": "Deployments",
+  "description": "Agent deployment management per channel (web-widget, sip, whatsapp).\n\nBase URL: `/{tenant}/api/ai/agents/{agent}/deployments`\n\nEnabling a deployment auto-disables others on the same channel.\n\nAll responses include HATEOAS `_links`.",
+  "order": 10
+}

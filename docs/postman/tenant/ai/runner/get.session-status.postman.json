@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Session Status",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/runner/sessions/{{session_id}}/status",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "runner", "sessions", "{{session_id}}", "status"]
+      },
+      "description": "Polls the current state of a session. Used by the frontend to detect when the agent ends the call.\n\n**No user auth required** — stripped via middleware.\n\n**Response:** `200 OK`\n```json\n{\n  \"data\": {\n    \"session_id\": \"sess_a1b2c3d4e5f6\",\n    \"tenant_id\": \"...\",\n    \"agent_id\": \"...\",\n    \"room_name\": \"...\",\n    \"status\": \"active\",\n    \"started_at\": \"2026-04-21T18:00:00+00:00\",\n    \"ended_at\": null,\n    \"ended_by\": null\n  }\n}\n```\n\n**Error:** `404` if session not found."
+    }
+  },
+  "order": 20
+}

@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Agent",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}"]
+      },
+      "description": "Permanently deletes an agent and all associated settings, tools, and deployments.\n\n**Auth:** `agent.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 50
+}

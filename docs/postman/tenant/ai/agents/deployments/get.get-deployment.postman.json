@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Deployment",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/deployments/{{deployment_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "deployments", "{{deployment_id}}"]
+      },
+      "description": "Returns a single deployment with full config and HATEOAS `_links`.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentDeploymentData }\n```"
+    }
+  },
+  "order": 30
+}

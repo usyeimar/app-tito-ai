@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Mark Session User-Ended",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/runner/sessions/{{session_id}}/user-ended",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "runner", "sessions", "{{session_id}}", "user-ended"]
+      },
+      "description": "Marks a session as ended by the user (browser hang-up). Updates the cache state so the runner can detect it.\n\n**No user auth required.**\n\n**Response:** `200 OK`\n```json\n{ \"message\": \"Session marked as ended by user\" }\n```\n\n**Error:** `404` if session not found."
+    }
+  },
+  "order": 30
+}

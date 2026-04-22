@@ -1,0 +1,5 @@
+{
+  "name": "Runner",
+  "description": "Runner ↔ Laravel communication endpoints — webhooks, session status, and audio upload.\n\nBase URL: `/{tenant}/api/ai`\n\nThese endpoints are used by the Python runner microservice and the frontend. Most use `X-Tito-Agent-Key` header auth instead of user auth.",
+  "order": 60
+}

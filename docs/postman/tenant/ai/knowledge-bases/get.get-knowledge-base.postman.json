@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Knowledge Base",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}"]
+      },
+      "description": "Returns a single knowledge base.\n\n**Auth:** `knowledge_base.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": KnowledgeBaseData }\n```"
+    }
+  },
+  "order": 30
+}

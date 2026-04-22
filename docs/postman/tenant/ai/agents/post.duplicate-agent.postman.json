@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Duplicate Agent",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"My Agent (Copy)\"\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/duplicate",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "duplicate"]
+      },
+      "description": "Clones an agent including all settings, tools, and configuration. Optionally provide a custom `name`; defaults to original name + \" (Copy)\".\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": AgentData, \"message\": \"Agent duplicated.\" }\n```"
+    }
+  },
+  "order": 55
+}

@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Get Agent Summaries",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/summaries?q=&page[number]=1&page[size]=50",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "summaries"],
+        "query": [
+          { "key": "q", "value": "", "description": "Search on name/slug (ilike)." },
+          { "key": "page[number]", "value": "1", "description": "Page number." },
+          { "key": "page[size]", "value": "50", "description": "Items per page (max: 100)." }
+        ]
+      },
+      "description": "Returns a lightweight list of agents without full configuration. Ideal for dropdowns and selection UIs.\n\nIncludes `deployments_count`, `tools_count`, `has_knowledge_base`, and HATEOAS `_links`.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": [AgentSummaryData[]] }\n```"
+    }
+  },
+  "order": 15
+}

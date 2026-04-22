@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "List Tools",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/tools",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "tools"]
+      },
+      "description": "Returns all tools for an agent, ordered by name.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{\n  \"data\": [AgentToolData[]],\n  \"_links\": { \"self\": {...}, \"create\": {...}, \"agent\": {...} }\n}\n```"
+    }
+  },
+  "order": 10
+}

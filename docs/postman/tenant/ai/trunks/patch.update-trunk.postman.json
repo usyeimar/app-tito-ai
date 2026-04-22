@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Trunk",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"status\": \"inactive\",\n  \"max_concurrent_calls\": 20,\n  \"register_config\": {\n    \"server\": \"sip.provider.com\",\n    \"port\": 5060,\n    \"username\": \"trunk_user\",\n    \"password\": \"trunk_pass\",\n    \"register_interval\": 300\n  }\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/trunks/{{trunk_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "trunks", "{{trunk_id}}"]
+      },
+      "description": "Partially updates a trunk. Only provided fields are modified.\n\n**Statuses:** `active`, `inactive`, `suspended`.\n\n**Auth:** `trunk.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": TrunkData, \"message\": \"Trunk updated\" }\n```"
+    }
+  },
+  "order": 40
+}

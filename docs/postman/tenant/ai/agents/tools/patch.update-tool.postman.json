@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Tool",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"description\": \"Updated description\",\n  \"is_active\": false\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/tools/{{tool_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "tools", "{{tool_id}}"]
+      },
+      "description": "Partially updates a tool. Only provided fields are modified.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentToolData, \"message\": \"Tool updated.\" }\n```"
+    }
+  },
+  "order": 40
+}

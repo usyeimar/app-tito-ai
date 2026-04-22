@@ -1,0 +1,27 @@
+{
+  "item": {
+    "name": "List Conversations",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/conversations?page[number]=1&page[size]=20",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "conversations"],
+        "query": [
+          { "key": "q", "value": "", "description": "Full-text search.", "disabled": true },
+          { "key": "filter[agent_id]", "value": "", "description": "Filter by agent ULID.", "disabled": true },
+          { "key": "filter[status]", "value": "", "description": "Filter by status: active, completed, failed, ended.", "disabled": true },
+          { "key": "filter[channel]", "value": "", "description": "Filter by channel: web-widget, sip, whatsapp.", "disabled": true },
+          { "key": "filter[started_after]", "value": "", "description": "ISO 8601 date. Only sessions started after this date.", "disabled": true },
+          { "key": "filter[started_before]", "value": "", "description": "ISO 8601 date. Only sessions started before this date.", "disabled": true },
+          { "key": "sort", "value": "-started_at", "description": "Sort field. Default: -started_at (newest first).", "disabled": true },
+          { "key": "page[number]", "value": "1", "description": "Page number (min: 1)." },
+          { "key": "page[size]", "value": "20", "description": "Items per page (min: 1, max: 100)." }
+        ]
+      },
+      "description": "Returns a paginated list of conversations across all agents in the workspace.\n\nEach item includes `agent_name`, `duration_seconds` (computed), `transcript_count`, and HATEOAS `_links`.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{\n  \"data\": [ConversationData[]],\n  \"meta\": { \"current_page\": 1, \"last_page\": 5, \"per_page\": 20, \"total\": 98 },\n  \"_links\": { \"self\": {...}, \"next\": {...}, \"prev\": {...} }\n}\n```"
+    }
+  },
+  "order": 10
+}

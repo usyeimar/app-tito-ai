@@ -1,0 +1,24 @@
+{
+  "item": {
+    "name": "List Agents",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents?q=&sort=name&page[number]=1&page[size]=20",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents"],
+        "query": [
+          { "key": "q", "value": "", "description": "Full-text search on name, slug, description (ilike)." },
+          { "key": "sort", "value": "name", "description": "Sort field. Prefix with - for desc (e.g. -created_at)." },
+          { "key": "page[number]", "value": "1", "description": "Page number (min: 1)." },
+          { "key": "page[size]", "value": "20", "description": "Items per page (min: 1, max: 100)." },
+          { "key": "filter", "value": "", "description": "Filter array (reserved for future use).", "disabled": true },
+          { "key": "include", "value": "", "description": "Comma-separated relations to include.", "disabled": true }
+        ]
+      },
+      "description": "Returns a paginated collection of all agents in the workspace.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": [AgentData[]] }\n```"
+    }
+  },
+  "order": 10
+}

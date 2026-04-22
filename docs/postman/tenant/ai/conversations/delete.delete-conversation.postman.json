@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Conversation",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/conversations/{{conversation_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "conversations", "{{conversation_id}}"]
+      },
+      "description": "Permanently deletes a conversation and all associated transcripts and audio.\n\n**Auth:** `agent.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 40
+}

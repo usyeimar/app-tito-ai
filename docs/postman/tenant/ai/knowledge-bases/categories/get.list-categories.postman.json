@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "List Categories",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/categories",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "categories"]
+      },
+      "description": "Returns all categories for a knowledge base, ordered by `display_order`.\n\n**Auth:** `knowledge_base.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": [{ \"id\": \"...\", \"knowledge_base_id\": \"...\", \"parent_id\": null, \"name\": \"...\", \"slug\": \"...\", \"display_order\": 0 }] }\n```"
+    }
+  },
+  "order": 10
+}

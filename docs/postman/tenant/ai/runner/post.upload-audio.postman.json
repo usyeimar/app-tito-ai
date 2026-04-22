@@ -1,0 +1,24 @@
+{
+  "item": {
+    "name": "Upload Session Audio",
+    "request": {
+      "method": "POST",
+      "header": [
+        { "key": "X-Tito-Agent-Key", "value": "{{runner_api_key}}", "description": "Runner API key." }
+      ],
+      "body": {
+        "mode": "formdata",
+        "formdata": [
+          { "key": "audio", "type": "file", "description": "WAV/MP3 audio file (max 100MB)." }
+        ]
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/runner/sessions/{{session_id}}/audio",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "runner", "sessions", "{{session_id}}", "audio"]
+      },
+      "description": "Uploads a session recording from the runner. Stored locally and linked to the `AgentSession`.\n\n**No user auth** — uses `X-Tito-Agent-Key` header.\n\n**Response:** `201 Created`\n```json\n{ \"data\": { \"id\": \"...\", \"name\": \"session_abc.wav\", \"size\": 1048576 }, \"message\": \"Audio uploaded.\" }\n```\n\n**Errors:** `401` invalid key, `404` session not found."
+    }
+  },
+  "order": 40
+}

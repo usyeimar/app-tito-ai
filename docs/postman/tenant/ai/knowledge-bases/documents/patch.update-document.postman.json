@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Document",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"title\": \"Updated: How to reset your password\",\n  \"content\": \"# Password Reset v2\\n\\nUpdated instructions...\\n\",\n  \"status\": \"published\"\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/documents/{{document_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "documents", "{{document_id}}"]
+      },
+      "description": "Partially updates a document. If `content` is changed, a new version is created automatically.\n\nSetting `status` to `published` sets `published_at`.\n\n**Statuses:** `draft`, `published`, `archived`\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": DocumentData, \"message\": \"Knowledge base document updated.\" }\n```"
+    }
+  },
+  "order": 40
+}

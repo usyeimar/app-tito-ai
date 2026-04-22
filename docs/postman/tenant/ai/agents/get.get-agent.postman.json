@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Get Agent",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}"]
+      },
+      "description": "Returns the full agent configuration including settings, tools, and deployments.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentData }\n```"
+    }
+  },
+  "order": 30
+}

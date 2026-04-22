@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Deployment",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"enabled\": true,\n  \"config\": {\n    \"theme\": \"dark\",\n    \"position\": \"bottom-left\"\n  },\n  \"status\": \"active\"\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/deployments/{{deployment_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "deployments", "{{deployment_id}}"]
+      },
+      "description": "Partially updates a deployment. Setting `enabled: true` auto-disables other deployments on the same channel and sets `deployed_at`.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": AgentDeploymentData, \"message\": \"Deployment updated.\" }\n```"
+    }
+  },
+  "order": 40
+}

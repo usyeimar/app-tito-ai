@@ -1,0 +1,23 @@
+{
+  "item": {
+    "name": "Runner Webhook",
+    "request": {
+      "method": "POST",
+      "header": [
+        { "key": "X-Tito-Agent-Key", "value": "{{runner_api_key}}", "description": "Runner API key for authentication." }
+      ],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"event\": \"session.ended\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"tenant_id\": \"{{tenant_slug}}\",\n  \"room_name\": \"tito_agent_abc123\",\n  \"timestamp\": 1745276400.123,\n  \"data\": {\n    \"session_id\": \"sess_a1b2c3d4e5f6\",\n    \"status\": \"completed\",\n    \"duration\": 125.4,\n    \"reason\": \"agent_hangup\",\n    \"transcription\": [\n      { \"role\": \"user\", \"content\": \"Hello\" },\n      { \"role\": \"assistant\", \"content\": \"Hi! How can I help?\" }\n    ],\n    \"recording_path\": \"/data/recordings/session_abc123.wav\"\n  }\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/runner/webhook",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "runner", "webhook"]
+      },
+      "description": "Receives lifecycle events from the Python runner. No user auth — uses `X-Tito-Agent-Key` header.\n\n**Events:**\n- `session.started` — Creates `AgentSession` in DB, broadcasts to frontend.\n- `session.ended` — Updates session status, persists full transcript, broadcasts.\n- `session.transcript` — Persists individual transcript entry, broadcasts.\n- `session.error` — Marks session as failed, broadcasts.\n\n**Session ID:** Extracted from `data.session_id` in the payload.\n\n**Response:** `200 OK`\n```json\n{ \"status\": \"received\" }\n```\n\n**Error:** `401` if API key is invalid."
+    }
+  },
+  "order": 10
+}

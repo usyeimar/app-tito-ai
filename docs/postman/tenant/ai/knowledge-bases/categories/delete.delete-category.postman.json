@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Category",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/categories/{{category_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "categories", "{{category_id}}"]
+      },
+      "description": "Deletes a category and all its documents.\n\n**Auth:** `knowledge_base.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 40
+}

@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "Delete Knowledge Base",
+    "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}"]
+      },
+      "description": "Permanently deletes a knowledge base and all its categories and documents.\n\n**Auth:** `knowledge_base.delete` permission required.\n\n**Response:** `204 No Content`"
+    }
+  },
+  "order": 50
+}

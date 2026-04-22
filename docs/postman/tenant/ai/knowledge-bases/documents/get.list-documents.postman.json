@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "List Documents",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/documents",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "documents"]
+      },
+      "description": "Returns all documents for a knowledge base.\n\n**Auth:** `knowledge_base.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": [DocumentData[]] }\n```\n\n**DocumentData:** `id, knowledge_base_category_id, title, slug, content_format, status, author_id, published_at, content, version_number`"
+    }
+  },
+  "order": 10
+}

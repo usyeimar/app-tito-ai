@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Document",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"knowledge_base_category_id\": \"{{category_id}}\",\n  \"title\": \"How to reset your password\",\n  \"content\": \"# Password Reset\\n\\nFollow these steps to reset your password...\\n\",\n  \"content_format\": \"markdown\"\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/documents",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "documents"]
+      },
+      "description": "Creates a new document with an initial version (v1). A slug is auto-generated from the title.\n\n**Required:** `knowledge_base_category_id`, `title`, `content`\n\n**Content formats:** `markdown`, `html`, `plain`\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": DocumentData, \"message\": \"Knowledge base document created.\" }\n```"
+    }
+  },
+  "order": 20
+}

@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Update Category",
+    "request": {
+      "method": "PATCH",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"name\": \"Updated Category\",\n  \"display_order\": 5\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/knowledge-bases/{{knowledge_base_id}}/categories/{{category_id}}",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "knowledge-bases", "{{knowledge_base_id}}", "categories", "{{category_id}}"]
+      },
+      "description": "Partially updates a category.\n\n**Auth:** `knowledge_base.manage` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": CategoryData, \"message\": \"Knowledge base category updated.\" }\n```"
+    }
+  },
+  "order": 30
+}

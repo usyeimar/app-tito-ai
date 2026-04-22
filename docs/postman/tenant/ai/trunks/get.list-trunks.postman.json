@@ -1,0 +1,22 @@
+{
+  "item": {
+    "name": "List Trunks",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/trunks?page[number]=1&page[size]=20",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "trunks"],
+        "query": [
+          { "key": "q", "value": "", "description": "Search on name (ilike).", "disabled": true },
+          { "key": "sort", "value": "name", "description": "Sort field. Prefix with - for desc.", "disabled": true },
+          { "key": "page[number]", "value": "1", "description": "Page number." },
+          { "key": "page[size]", "value": "20", "description": "Items per page (max: 100)." }
+        ]
+      },
+      "description": "Returns all trunks in the workspace.\n\n**Auth:** `trunk.view` permission required.\n\n**Response:** `200 OK`\n```json\n{ \"data\": [TrunkData[]] }\n```"
+    }
+  },
+  "order": 10
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Agents",
+  "description": "AI Agent management — CRUD, summaries, and duplication.\n\nBase URL: `/{tenant}/api/ai/agents`\n\nAll endpoints require `auth:tenant-api` and `agent.*` permissions.",
+  "order": 10
+}

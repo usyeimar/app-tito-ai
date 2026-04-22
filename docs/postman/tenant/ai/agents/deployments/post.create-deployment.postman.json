@@ -1,0 +1,21 @@
+{
+  "item": {
+    "name": "Create Deployment",
+    "request": {
+      "method": "POST",
+      "header": [],
+      "body": {
+        "mode": "raw",
+        "raw": "{\n  \"channel\": \"web-widget\",\n  \"enabled\": true,\n  \"config\": {\n    \"theme\": \"light\",\n    \"position\": \"bottom-right\",\n    \"welcome_message\": \"Hello! How can I help?\"\n  },\n  \"version\": \"1.0.0\",\n  \"status\": \"active\",\n  \"metadata\": {}\n}",
+        "options": { "raw": { "language": "json" } }
+      },
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/deployments",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "deployments"]
+      },
+      "description": "Creates a new deployment for the agent on a specific channel.\n\n**Channels:** `web-widget`, `sip`, `whatsapp`\n\nEnabling a deployment automatically disables other deployments on the same channel for this agent.\n\n**Auth:** `agent.manage` permission required.\n\n**Response:** `201 Created`\n```json\n{ \"data\": AgentDeploymentData, \"message\": \"Deployment created.\", \"_links\": {...} }\n```"
+    }
+  },
+  "order": 20
+}

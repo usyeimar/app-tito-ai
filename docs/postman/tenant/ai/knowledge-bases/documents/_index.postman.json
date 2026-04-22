@@ -1,0 +1,5 @@
+{
+  "name": "Documents",
+  "description": "Knowledge base document management with automatic versioning.\n\nBase URL: `/{tenant}/api/ai/knowledge-bases/{kb}/documents`\n\nUpdating content creates a new version automatically.",
+  "order": 20
+}

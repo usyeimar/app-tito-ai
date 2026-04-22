@@ -1,0 +1,16 @@
+{
+  "item": {
+    "name": "List Deployments",
+    "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+        "raw": "{{base_url}}/{{tenant_slug}}/api/ai/agents/{{agent_id}}/deployments",
+        "host": ["{{base_url}}"],
+        "path": ["{{tenant_slug}}", "api", "ai", "agents", "{{agent_id}}", "deployments"]
+      },
+      "description": "Returns all deployments for an agent, ordered by enabled (desc) then channel.\n\nEach item includes `channel_label` (human-readable) and HATEOAS `_links` (self, update, delete, agent). Active web-widget deployments also include a `widget_config` link.\n\n**Auth:** `agent.view` permission required.\n\n**Response:** `200 OK`\n```json\n{\n  \"data\": [AgentDeploymentData[]],\n  \"_links\": {\n    \"self\": { \"href\": \"...\", \"method\": \"GET\" },\n    \"create\": { \"href\": \"...\", \"method\": \"POST\" },\n    \"agent\": { \"href\": \"...\", \"method\": \"GET\" }\n  }\n}\n```"
+    }
+  },
+  "order": 10
+}
