@@ -1,16 +1,16 @@
 <?php
 
-use App\Models\User;
+use App\Models\Central\Auth\Authentication\CentralUser;
 
 test('guests are redirected to the login page', function () {
-    $response = $this->get(route('dashboard'));
-    $response->assertRedirect(route('login'));
+    $this->get(route('workspaces'))
+        ->assertRedirect(route('login'));
 });
 
 test('authenticated users can visit the dashboard', function () {
-    $user = User::factory()->create();
-    $this->actingAs($user);
+    $user = CentralUser::factory()->create();
 
-    $response = $this->get(route('dashboard'));
-    $response->assertOk();
+    $this->actingAs($user)
+        ->get(route('workspaces'))
+        ->assertOk();
 });
