@@ -8,11 +8,14 @@ use App\Models\Tenant\Agent\AgentSession;
 use App\Models\Tenant\Auth\Authentication\User as TenantUser;
 use App\Models\Tenant\System\SystemProfilePicture as TenantSystemProfilePicture;
 use App\Models\User;
+use App\Support\Mixins\BuilderPaginationMixin;
 use FilesystemIterator;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Event;
@@ -44,6 +47,13 @@ class AppServiceProvider extends ServiceProvider
         $this->configureAuthorization();
         $this->configureTenancy();
         $this->configureSocialite();
+        $this->configureBuilderMixins();
+    }
+
+    private function configureBuilderMixins(): void
+    {
+        EloquentBuilder::mixin(new BuilderPaginationMixin);
+        QueryBuilder::mixin(new BuilderPaginationMixin);
     }
 
     /**
