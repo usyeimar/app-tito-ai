@@ -11,16 +11,16 @@ class HasAccesToWorkSpace
 {
     public function handle(Request $request, Closure $next)
     {
-        // $tenant = tenant();
+        if (auth('tenant-api')->check()) {
+            return $next($request);
+        }
 
-        // if (! $tenant) {
-        //     return $next($request);
-        // }
-
-        // /** @var CentralUser|null $centralUser */
         $centralUser = auth('web')->user();
 
-        // dd($centralUser);
+        if (! $centralUser instanceof CentralUser) {
+            abort(401, 'Unauthenticated.');
+        }
+
         $tenants = app(TenantService::class)->listForUser($centralUser);
 
         $currentTenantSlug = tenant()?->slug;
