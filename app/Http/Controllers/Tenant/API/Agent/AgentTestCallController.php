@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Gate;
 
 class AgentTestCallController extends Controller
 {
+    /** @var string[] Transports the WebRTC UI can render */
+    private const SUPPORTED_TRANSPORTS = ['livekit', 'daily'];
+
     public function __construct(
         private readonly RunnerClient $runner,
         private readonly SessionStateService $sessionState,
@@ -24,14 +27,14 @@ class AgentTestCallController extends Controller
         Gate::authorize('view', $agent);
 
         $session = $this->runner->createSession($agent);
+        $provider = $session['provider'] ?? 'unknown';
 
-        if (($session['provider'] ?? null) !== 'livekit') {
+        if (! in_array($provider, self::SUPPORTED_TRANSPORTS, true)) {
             if (! empty($session['session_id'])) {
                 $this->runner->terminateSession((string) $session['session_id']);
             }
 
-            abort(503, 'El runner devolvió un transporte no soportado: '
-                .($session['provider'] ?? 'unknown').'. Esta UI solo soporta LiveKit.');
+            abort(503, "Unsupported transport: {$provider}. Supported: ".implode(', ', self::SUPPORTED_TRANSPORTS));
         }
 
         $this->sessionState->createSession(
@@ -42,6 +45,7 @@ class AgentTestCallController extends Controller
         );
 
         return response()->json([
+            'success' => true,
             'data' => $session,
             'message' => 'Test session created.',
         ], 201);

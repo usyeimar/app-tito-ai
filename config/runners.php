@@ -12,6 +12,9 @@ declare(strict_types=1);
 | directly: it asks the runner to create a session and forwards the
 | returned room URL + access token to the client.
 |
+| The runner decides which WebRTC transport (LiveKit/Daily) to use —
+| Laravel does not send transport preference in the agent config.
+|
 | Source: services/runners
 |
 */
@@ -39,22 +42,24 @@ return [
     'use_registry' => (bool) env('TITO_RUNNERS_USE_REGISTRY', false),
 
     /*
-    | Default transport when an agent does not specify one. Both `livekit`
-    | and `daily` are supported by the browser UI; the runner picks the
-    | matching room provider per session.
+    |--------------------------------------------------------------------------
+    | Circuit Breaker
+    |--------------------------------------------------------------------------
     */
-    'default_transport' => env('TITO_RUNNERS_DEFAULT_TRANSPORT', 'livekit'),
+    'circuit_breaker' => [
+        'failure_threshold' => (int) env('TITO_RUNNERS_CB_FAILURES', 5),
+        'recovery_timeout' => (int) env('TITO_RUNNERS_CB_RECOVERY', 30),
+        'success_threshold' => (int) env('TITO_RUNNERS_CB_SUCCESSES', 2),
+    ],
 
     /*
-    | Whitelist of transport providers the UI can render. Sessions whose
-    | provider is not in this list are torn down with a clear error.
+    |--------------------------------------------------------------------------
+    | Session Reconciliation
+    |--------------------------------------------------------------------------
+    |
+    | Minutes after which an active session with no webhook events is
+    | considered orphaned and marked as failed by the reconciliation command.
+    |
     */
-    'allowed_transports' => ['livekit', 'daily'],
-
-    /*
-    | Default callback URL the runner will use to POST session events
-    | (transcripts, status changes, etc.). Leave null to let the runner
-    | use its own BACKEND_URL.
-    */
-    'callback_url' => env('TITO_RUNNERS_CALLBACK_URL'),
+    'orphan_stale_minutes' => (int) env('TITO_RUNNERS_ORPHAN_MINUTES', 60),
 ];
