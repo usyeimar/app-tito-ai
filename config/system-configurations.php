@@ -33,36 +33,6 @@ return [
             ],
         ],
         [
-            'key' => 'proposal_terms_and_conditions',
-            'label' => 'Proposal Terms & Conditions',
-            'data' => null,
-            'meta' => null,
-        ],
-        [
-            'key' => 'proposal_header_markup',
-            'label' => 'Proposal Header Markup',
-            'data' => null,
-            'meta' => null,
-        ],
-        [
-            'key' => 'proposal_footer_markup',
-            'label' => 'Proposal Footer Markup',
-            'data' => null,
-            'meta' => null,
-        ],
-        [
-            'key' => 'proposal_signed_status',
-            'label' => 'Proposal Signed Status',
-            'data' => null,
-            'meta' => null,
-        ],
-        [
-            'key' => 'proposal_change_order_signed_status',
-            'label' => 'Proposal Change Order Signed Status',
-            'data' => null,
-            'meta' => null,
-        ],
-        [
             'key' => 'assistant_defaults',
             'label' => 'Assistant Defaults',
             'data' => [
