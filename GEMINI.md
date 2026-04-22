@@ -229,3 +229,51 @@ Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `
 - IMPORTANT: Activate `inertia-react-development` when working with Inertia React client-side patterns.
 
 </laravel-boost-guidelines>
+
+<!-- Project-specific architecture conventions — see ARCHITECTURE.md for full details -->
+
+## Project Architecture (Tito AI)
+
+When generating code for this project, follow the patterns documented in `ARCHITECTURE.md`. Key rules:
+
+### Backend Layer Order
+`Route → FormRequest → Controller → Action → Model → Data → Response`
+
+### Actions over Services for new features
+- Use `final` invokable Action classes (`__invoke`) in `app/Actions/Tenant/{Domain}/`
+- One action per use case: `CreateAgent`, `UpdateAgent`, `DeleteAgent`, `ListAgents`, `ShowAgent`
+- Accept typed Spatie `Data` objects, return typed `Data` objects or `void`
+- Wrap multi-model writes in `DB::transaction()`
+
+### Data Objects (Spatie Laravel Data)
+- `Create{Entity}Data` — required fields + nullable optional
+- `Update{Entity}Data` — all nullable for partial updates
+- `{Entity}Data` — full read DTO with `from{Entity}()` static factory
+- Location: `app/Data/Tenant/{Domain}/`
+
+### FormRequests per controller method
+- `Store{Entity}Request` (creation), `Update{Entity}Request`, `Index{Entity}Request`
+- Store uses `required`, Update uses `sometimes`
+- Index uses `HasCanonicalSearchRules` trait
+- Authorization delegated to policies (`authorize()` returns `true`)
+
+### Controllers
+- No constructor — inject Actions per method parameter
+- `Gate::authorize()` at top of each method
+- `declare(strict_types=1)` always
+- Response envelope: `{ "data": ..., "message": "..." }`
+- `destroy` returns `response()->noContent()`
+
+### Policies
+- Extend `ModulePolicy` for permission-gated modules
+- Register module key in `TenantPermissionRegistry::MODULES`
+
+### Models
+- Always `HasUlids` for primary keys
+- `HasFactory` with `@use` PHPDoc generic
+- Explicit `$table`, `$fillable`, `$casts`
+
+### Tests (Pest)
+- Nested `describe()`: Authentication → Authorization → CRUD
+- `$this->user` = super_admin, `$this->tenantApiUrl()` for URLs
+- Factories with states, `assertJsonPath()` for values, `expect()->toBe()` for DB checks
