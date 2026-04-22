@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Tenant\Agent;
 
-use App\Models\Tenant\Knowledge\KnowledgeBase;
+use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
 use Database\Factories\Tenant\Agent\AgentFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;

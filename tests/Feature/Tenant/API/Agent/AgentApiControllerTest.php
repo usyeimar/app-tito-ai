@@ -4,8 +4,6 @@ use App\Models\Central\Auth\Role\Role;
 use App\Models\Tenant\Agent\Agent;
 use App\Models\Tenant\Auth\Authentication\User;
 
-
-
 describe('Agents API', function () {
     describe('Authentication and Authorization', function () {
         it('requires authentication to list agents', function () {
@@ -135,8 +133,5 @@ describe('Agents API', function () {
             });
         });
     });
-
-
-
 
 });

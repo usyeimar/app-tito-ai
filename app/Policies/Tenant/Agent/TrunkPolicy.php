@@ -6,7 +6,7 @@ namespace App\Policies\Tenant\Agent;
 
 use App\Policies\ModulePolicy;
 
-final class AgentPolicy extends ModulePolicy
+final class TrunkPolicy extends ModulePolicy
 {
-    protected string $module = 'agent';
+    protected string $module = 'trunk';
 }

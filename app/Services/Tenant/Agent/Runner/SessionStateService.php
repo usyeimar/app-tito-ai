@@ -7,33 +7,22 @@ namespace App\Services\Tenant\Agent\Runner;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Gestiona el estado de las sesiones de agentes para notificar al frontend
- * cuando el agente finaliza la llamada.
- */
 class SessionStateService
 {
     private const CACHE_PREFIX = 'agent_session:';
 
-    private const DEFAULT_TTL = 3600; // 1 hora
+    private const DEFAULT_TTL = 3600;
 
-    /**
-     * Crea un nuevo registro de sesión.
-     */
     public function createSession(
-        string $channelId,
+        string $sessionId,
         string $tenantId,
         string $agentId,
-        string $sessionId,
-        string $roomName
+        string $roomName,
     ): void {
-        $key = self::CACHE_PREFIX.$channelId;
-
-        Cache::put($key, [
-            'channel_id' => $channelId,
+        Cache::put(self::CACHE_PREFIX.$sessionId, [
+            'session_id' => $sessionId,
             'tenant_id' => $tenantId,
             'agent_id' => $agentId,
-            'session_id' => $sessionId,
             'room_name' => $roomName,
             'status' => 'active',
             'started_at' => now()->toISOString(),
@@ -42,27 +31,15 @@ class SessionStateService
             'data' => [],
         ], self::DEFAULT_TTL);
 
-        Log::debug('Sesión de agente registrada', [
-            'channel_id' => $channelId,
-            'session_id' => $sessionId,
-        ]);
+        Log::debug('Agent session registered', ['session_id' => $sessionId]);
     }
 
-    /**
-     * Marca una sesión como finalizada.
-     */
-    public function endSession(
-        string $channelId,
-        string $endedBy = 'agent',
-        ?array $data = null
-    ): void {
-        $key = self::CACHE_PREFIX.$channelId;
-        $session = Cache::get($key);
+    public function endSession(string $sessionId, string $endedBy = 'agent', ?array $data = null): void
+    {
+        $session = $this->getSession($sessionId);
 
         if (! $session) {
-            Log::warning('Intento de finalizar sesión no encontrada', [
-                'channel_id' => $channelId,
-            ]);
+            Log::warning('Attempted to end unknown session', ['session_id' => $sessionId]);
 
             return;
         }
@@ -74,41 +51,23 @@ class SessionStateService
             $session['data'] = array_merge($session['data'], $data);
         }
 
-        Cache::put($key, $session, self::DEFAULT_TTL);
-
-        Log::info('Sesión de agente marcada como finalizada', [
-            'channel_id' => $channelId,
-            'session_id' => $session['session_id'],
-            'ended_by' => $endedBy,
-        ]);
+        Cache::put(self::CACHE_PREFIX.$sessionId, $session, self::DEFAULT_TTL);
     }
 
-    /**
-     * Obtiene el estado de una sesión.
-     */
-    public function getSession(string $channelId): ?array
+    public function getSession(string $sessionId): ?array
     {
-        $key = self::CACHE_PREFIX.$channelId;
-
-        return Cache::get($key);
+        return Cache::get(self::CACHE_PREFIX.$sessionId);
     }
 
-    /**
-     * Verifica si una sesión está activa.
-     */
-    public function isActive(string $channelId): bool
+    public function isActive(string $sessionId): bool
     {
-        $session = $this->getSession($channelId);
+        $session = $this->getSession($sessionId);
 
         return $session !== null && $session['status'] === 'active';
     }
 
-    /**
-     * Elimina una sesión del cache.
-     */
-    public function deleteSession(string $channelId): void
+    public function deleteSession(string $sessionId): void
     {
-        $key = self::CACHE_PREFIX.$channelId;
-        Cache::forget($key);
+        Cache::forget(self::CACHE_PREFIX.$sessionId);
     }
 }

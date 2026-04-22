@@ -4,177 +4,147 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Tenant\API\Agent;
 
+use App\Events\Tenant\Agent\AgentSessionEvent;
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Agent\AgentSession;
 use App\Services\Tenant\Agent\Runner\SessionStateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Recibe webhooks del runner cuando ocurren eventos de sesión.
- *
- * Eventos soportados:
- * - session.started: Sesión iniciada
- * - session.ended: Sesión finalizada (por el agente o desconexión)
- * - session.transcript: Transcripción disponible
- * - session.error: Error en la sesión
- */
 class AgentSessionWebhookController extends Controller
 {
     public function __construct(
         private readonly SessionStateService $sessionState,
     ) {}
 
-    /**
-     * Procesa eventos webhook del runner para un canal específico.
-     */
-    public function handle(Request $request, string $channelId): JsonResponse
+    public function handle(Request $request): JsonResponse
     {
-        // Validar API key del runner
-        $apiKey = $request->header('X-Tito-Agent-Key');
-        if (! $this->isValidApiKey($apiKey)) {
-            Log::warning('Webhook del runner rechazado: API key inválida', [
-                'ip' => $request->ip(),
-                'channel_id' => $channelId,
-                'event' => $request->input('event'),
-            ]);
-
+        if (! $this->isValidApiKey($request->header('X-Tito-Agent-Key'))) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
         $event = $request->input('event');
-        $tenantId = $request->input('tenant_id');
         $agentId = $request->input('agent_id');
-        $roomName = $request->input('room_name');
         $data = $request->input('data', []);
+        $sessionId = $data['session_id'] ?? $request->input('session_id', '');
 
-        Log::info('Webhook del runner recibido', [
-            'event' => $event,
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
-            'agent_id' => $agentId,
-            'room_name' => $roomName,
-        ]);
+        Log::info("Runner webhook: {$event}", ['session_id' => $sessionId, 'agent_id' => $agentId]);
 
-        // Manejar eventos específicos
         match ($event) {
-            'session.started' => $this->handleSessionStarted($channelId, $tenantId, $agentId, $roomName, $data),
-            'session.ended' => $this->handleSessionEnded($channelId, $tenantId, $agentId, $roomName, $data),
-            'session.transcript' => $this->handleSessionTranscript($channelId, $tenantId, $agentId, $roomName, $data),
-            'session.error' => $this->handleSessionError($channelId, $tenantId, $agentId, $roomName, $data),
-            default => Log::debug("Evento de runner no manejado: {$event}"),
+            'session.started' => $this->handleSessionStarted($sessionId, $agentId, $data),
+            'session.ended' => $this->handleSessionEnded($sessionId, $agentId, $data),
+            'session.transcript' => $this->handleSessionTranscript($sessionId, $data),
+            'session.error' => $this->handleSessionError($sessionId, $agentId, $data),
+            default => Log::debug("Unhandled runner event: {$event}"),
         };
 
         return response()->json(['status' => 'received']);
     }
 
-    /**
-     * Maneja el evento de inicio de sesión.
-     */
-    private function handleSessionStarted(
-        string $channelId,
-        string $tenantId,
-        string $agentId,
-        string $roomName,
-        array $data
-    ): void {
-        broadcast([
-            'event' => 'session.started',
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
+    private function handleSessionStarted(string $sessionId, string $agentId, array $data): void
+    {
+        AgentSession::updateOrCreate(
+            ['external_session_id' => $sessionId],
+            [
+                'agent_id' => $agentId,
+                'channel' => $data['channel'] ?? 'web-widget',
+                'status' => 'active',
+                'metadata' => [],
+                'started_at' => now(),
+            ]
+        );
+
+        broadcast(new AgentSessionEvent($sessionId, 'session.started', [
             'agent_id' => $agentId,
-            'room_name' => $roomName,
-            'data' => $data,
-        ])->toOthers();
+            'session_id' => $sessionId,
+        ]));
     }
 
-    /**
-     * Maneja el evento de fin de sesión.
-     * Notifica al frontend para cerrar la modal y generar análisis.
-     */
-    private function handleSessionEnded(
-        string $channelId,
-        string $tenantId,
-        string $agentId,
-        string $roomName,
-        array $data
-    ): void {
-        Log::info('Sesión finalizada por el agente', [
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
-            'agent_id' => $agentId,
-            'room_name' => $roomName,
-            'reason' => $data['reason'] ?? 'unknown',
-            'duration' => $data['duration_seconds'] ?? null,
-        ]);
+    private function handleSessionEnded(string $sessionId, string $agentId, array $data): void
+    {
+        $session = AgentSession::where('external_session_id', $sessionId)->first();
 
-        // Update session state so frontend polling detects it
-        $this->sessionState->endSession($channelId, 'agent', $data);
+        if ($session) {
+            DB::transaction(function () use ($session, $data): void {
+                $session->update([
+                    'status' => $data['status'] ?? 'completed',
+                    'ended_at' => now(),
+                    'metadata' => array_merge($session->metadata ?? [], [
+                        'duration_seconds' => $data['duration'] ?? $data['duration_seconds'] ?? null,
+                        'termination_reason' => $data['reason'] ?? null,
+                        'recording_path' => $data['recording_path'] ?? null,
+                    ]),
+                ]);
+
+                $transcription = $data['transcription'] ?? [];
+                foreach ($transcription as $entry) {
+                    if (($entry['role'] ?? '') === 'system') {
+                        continue;
+                    }
+
+                    $session->transcripts()->create([
+                        'role' => $entry['role'] ?? 'user',
+                        'content' => $entry['content'] ?? '',
+                        'timestamp' => now(),
+                    ]);
+                }
+            });
+        }
+
+        $this->sessionState->endSession($sessionId, 'agent', $data);
+
+        broadcast(new AgentSessionEvent($sessionId, 'session.ended', [
+            'agent_id' => $agentId,
+            'status' => $data['status'] ?? 'completed',
+            'duration' => $data['duration'] ?? $data['duration_seconds'] ?? null,
+        ]));
     }
 
-    /**
-     * Maneja el evento de transcript disponible.
-     */
-    private function handleSessionTranscript(
-        string $channelId,
-        string $tenantId,
-        string $agentId,
-        string $roomName,
-        array $data
-    ): void {
-        broadcast([
-            'event' => 'session.transcript',
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
-            'agent_id' => $agentId,
-            'room_name' => $roomName,
-            'data' => $data,
-        ])->toOthers();
+    private function handleSessionTranscript(string $sessionId, array $data): void
+    {
+        $session = AgentSession::where('external_session_id', $sessionId)->first();
+
+        if ($session && ! empty($data['content'] ?? $data['text'] ?? null)) {
+            $session->transcripts()->create([
+                'role' => $data['role'] ?? 'user',
+                'content' => $data['content'] ?? $data['text'] ?? '',
+                'timestamp' => isset($data['timestamp']) ? now()->parse($data['timestamp']) : now(),
+            ]);
+        }
+
+        broadcast(new AgentSessionEvent($sessionId, 'session.transcript', $data));
     }
 
-    /**
-     * Maneja errores de sesión.
-     */
-    private function handleSessionError(
-        string $channelId,
-        string $tenantId,
-        string $agentId,
-        string $roomName,
-        array $data
-    ): void {
-        Log::error('Error en sesión del runner', [
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
+    private function handleSessionError(string $sessionId, string $agentId, array $data): void
+    {
+        $session = AgentSession::where('external_session_id', $sessionId)->first();
+
+        if ($session) {
+            $session->update([
+                'status' => 'failed',
+                'ended_at' => now(),
+                'metadata' => array_merge($session->metadata ?? [], [
+                    'error' => $data['error'] ?? 'Unknown error',
+                ]),
+            ]);
+        }
+
+        $this->sessionState->endSession($sessionId, 'error', $data);
+
+        Log::error('Runner session error', ['session_id' => $sessionId, 'error' => $data['error'] ?? null]);
+
+        broadcast(new AgentSessionEvent($sessionId, 'session.error', [
             'agent_id' => $agentId,
-            'room_name' => $roomName,
             'error' => $data['error'] ?? 'Unknown error',
-        ]);
-
-        broadcast([
-            'event' => 'session.error',
-            'channel_id' => $channelId,
-            'tenant_id' => $tenantId,
-            'agent_id' => $agentId,
-            'room_name' => $roomName,
-            'data' => $data,
-        ])->toOthers();
+        ]));
     }
 
-    /**
-     * Valida la API key del runner.
-     * Si no hay key configurada, acepta el webhook (para desarrollo).
-     */
     private function isValidApiKey(?string $apiKey): bool
     {
         $expectedKey = config('runners.api_key');
 
-        // Si no hay key configurada, aceptar webhook (desarrollo)
-        if (empty($expectedKey)) {
-            Log::debug('Webhook del runner aceptado: no hay API key configurada');
-
-            return true;
-        }
-
-        return $apiKey === $expectedKey;
+        return empty($expectedKey) || $apiKey === $expectedKey;
     }
 }

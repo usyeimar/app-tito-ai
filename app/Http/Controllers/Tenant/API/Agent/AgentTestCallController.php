@@ -19,10 +19,6 @@ class AgentTestCallController extends Controller
         private readonly SessionStateService $sessionState,
     ) {}
 
-    /**
-     * Provision a new voice session against the runners microservice and
-     * return the connection payload to the browser.
-     */
     public function start(Request $request, Agent $agent): JsonResponse
     {
         Gate::authorize('view', $agent);
@@ -30,7 +26,6 @@ class AgentTestCallController extends Controller
         $session = $this->runner->createSession($agent);
 
         if (($session['provider'] ?? null) !== 'livekit') {
-            // The runner ignored our transport pin (or is misconfigured).
             if (! empty($session['session_id'])) {
                 $this->runner->terminateSession((string) $session['session_id']);
             }
@@ -39,59 +34,41 @@ class AgentTestCallController extends Controller
                 .($session['provider'] ?? 'unknown').'. Esta UI solo soporta LiveKit.');
         }
 
-        // Register session state for frontend polling
         $this->sessionState->createSession(
-            channelId: $session['channel_id'],
+            sessionId: $session['session_id'],
             tenantId: (string) (tenant('id') ?? 'central'),
             agentId: (string) $agent->id,
-            sessionId: $session['session_id'],
             roomName: $session['room_name'],
         );
 
         return response()->json([
-            'success' => true,
-            'message' => 'Sesión de prueba creada exitosamente.',
             'data' => $session,
+            'message' => 'Test session created.',
         ], 201);
     }
 
-    /**
-     * Get the current state of a session.
-     * Used by frontend to detect when the agent ends the call.
-     */
-    public function status(Request $request, string $channelId): JsonResponse
+    public function status(Request $request, string $sessionId): JsonResponse
     {
-        $session = $this->sessionState->getSession($channelId);
+        $session = $this->sessionState->getSession($sessionId);
 
         if (! $session) {
-            return response()->json([
-                'error' => 'Session not found',
-            ], 404);
+            return response()->json(['error' => 'Session not found'], 404);
         }
 
-        return response()->json([
-            'data' => $session,
-        ]);
+        return response()->json(['data' => $session]);
     }
 
-    /**
-     * Mark a session as ended by the user.
-     */
-    public function userEnded(Request $request, string $channelId): JsonResponse
+    public function userEnded(Request $request, string $sessionId): JsonResponse
     {
-        $session = $this->sessionState->getSession($channelId);
+        $session = $this->sessionState->getSession($sessionId);
 
         if (! $session) {
-            return response()->json([
-                'error' => 'Session not found',
-            ], 404);
+            return response()->json(['error' => 'Session not found'], 404);
         }
 
-        $this->sessionState->endSession($channelId, 'user');
+        $this->sessionState->endSession($sessionId, 'user');
 
-        return response()->json([
-            'message' => 'Session marked as ended by user',
-        ]);
+        return response()->json(['message' => 'Session marked as ended by user']);
     }
 
     public function stop(Request $request, Agent $agent, string $session): JsonResponse
@@ -100,8 +77,6 @@ class AgentTestCallController extends Controller
 
         $ok = $this->runner->terminateSession($session);
 
-        return response()->json([
-            'data' => ['terminated' => $ok],
-        ]);
+        return response()->json(['data' => ['terminated' => $ok]]);
     }
 }

@@ -1,21 +1,25 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Actions\Tenant\Agent\Session;
 
 use App\Models\Tenant\Agent\AgentSession;
-use App\Models\Tenant\Commons\File;
+use App\Models\Tenant\Agent\AgentSessionAudio;
 use Illuminate\Http\UploadedFile;
 
-class UploadSessionAudio
+final class UploadSessionAudio
 {
-    public function __invoke(AgentSession $session, UploadedFile $file): File
+    public function __invoke(AgentSession $session, UploadedFile $file): AgentSessionAudio
     {
-        $path = $file->store($session->agent->id.'/sessions/'.$session->id, 'local');
+        $path = $file->store(
+            "agents/{$session->agent_id}/sessions/{$session->id}/audio",
+            'local'
+        );
 
-        return $session->files()->create([
+        return $session->audio()->create([
             'name' => $file->getClientOriginalName(),
             'path' => $path,
-            'disk' => 'local',
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
         ]);
