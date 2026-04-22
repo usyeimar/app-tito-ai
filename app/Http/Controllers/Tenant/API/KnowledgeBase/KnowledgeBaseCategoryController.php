@@ -4,54 +4,67 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Tenant\API\KnowledgeBase;
 
+use App\Actions\Tenant\KnowledgeBase\CreateKnowledgeBaseCategory;
+use App\Actions\Tenant\KnowledgeBase\DeleteKnowledgeBaseCategory;
+use App\Actions\Tenant\KnowledgeBase\ListKnowledgeBaseCategories;
+use App\Actions\Tenant\KnowledgeBase\ShowKnowledgeBaseCategory;
+use App\Actions\Tenant\KnowledgeBase\UpdateKnowledgeBaseCategory;
 use App\Data\Tenant\KnowledgeBase\CreateKnowledgeBaseCategoryData;
-use App\Data\Tenant\KnowledgeBase\KnowledgeBaseCategoryData;
 use App\Data\Tenant\KnowledgeBase\UpdateKnowledgeBaseCategoryData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\API\KnowledgeBase\IndexKnowledgeBaseCategoryRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\StoreKnowledgeBaseCategoryRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\UpdateKnowledgeBaseCategoryRequest;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBaseCategory;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Gate;
 
 class KnowledgeBaseCategoryController extends Controller
 {
-    public function index(KnowledgeBase $knowledgeBase)
+    public function index(IndexKnowledgeBaseCategoryRequest $request, KnowledgeBase $knowledgeBase, ListKnowledgeBaseCategories $action): JsonResponse
     {
-        $categories = $knowledgeBase->categories()->paginate();
+        Gate::authorize('viewAny', KnowledgeBase::class);
 
-        return KnowledgeBaseCategoryData::collection($categories);
+        $items = $action($knowledgeBase, $request->validated());
+
+        return response()->json(['data' => $items]);
     }
 
-    public function store(CreateKnowledgeBaseCategoryData $data, KnowledgeBase $knowledgeBase)
+    public function store(StoreKnowledgeBaseCategoryRequest $request, KnowledgeBase $knowledgeBase, CreateKnowledgeBaseCategory $action): JsonResponse
     {
-        $attributes = $data->toArray();
-        $attributes['slug'] = Str::slug($data->name).'-'.Str::random(5);
+        Gate::authorize('create', KnowledgeBase::class);
 
-        // Ensure the category is linked to the current Knowledge Base from the route
-        $attributes['knowledge_base_id'] = $knowledgeBase->id;
+        $data = CreateKnowledgeBaseCategoryData::from($request->validated());
+        $result = $action($knowledgeBase, $data);
 
-        $category = KnowledgeBaseCategory::create($attributes);
-
-        return KnowledgeBaseCategoryData::from($category);
+        return response()->json(['data' => $result, 'message' => 'Knowledge base category created.'], 201);
     }
 
-    public function update(UpdateKnowledgeBaseCategoryData $data, KnowledgeBase $knowledgeBase, KnowledgeBaseCategory $category)
+    public function show(KnowledgeBaseCategory $category, ShowKnowledgeBaseCategory $action): JsonResponse
     {
-        $attributes = array_filter($data->toArray(), fn ($value) => $value !== null);
+        Gate::authorize('view', KnowledgeBase::class);
 
-        if (isset($attributes['name'])) {
-            $attributes['slug'] = Str::slug($attributes['name']).'-'.Str::random(5);
-        }
-
-        $category->update($attributes);
-
-        return KnowledgeBaseCategoryData::from($category);
+        return response()->json(['data' => $action($category)]);
     }
 
-    public function destroy(KnowledgeBase $knowledgeBase, KnowledgeBaseCategory $category): JsonResponse
+    public function update(UpdateKnowledgeBaseCategoryRequest $request, KnowledgeBaseCategory $category, UpdateKnowledgeBaseCategory $action): JsonResponse
     {
-        $category->delete();
+        Gate::authorize('update', KnowledgeBase::class);
 
-        return response()->json(null, 204);
+        $data = UpdateKnowledgeBaseCategoryData::from($request->validated());
+        $result = $action($category, $data);
+
+        return response()->json(['data' => $result, 'message' => 'Knowledge base category updated.']);
+    }
+
+    public function destroy(KnowledgeBaseCategory $category, DeleteKnowledgeBaseCategory $action): Response
+    {
+        Gate::authorize('delete', KnowledgeBase::class);
+
+        $action($category);
+
+        return response()->noContent();
     }
 }

@@ -4,106 +4,68 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Tenant\API\KnowledgeBase;
 
+use App\Actions\Tenant\KnowledgeBase\CreateKnowledgeBaseDocument;
+use App\Actions\Tenant\KnowledgeBase\DeleteKnowledgeBaseDocument;
+use App\Actions\Tenant\KnowledgeBase\ListKnowledgeBaseDocuments;
+use App\Actions\Tenant\KnowledgeBase\ShowKnowledgeBaseDocument;
+use App\Actions\Tenant\KnowledgeBase\UpdateKnowledgeBaseDocument;
 use App\Data\Tenant\KnowledgeBase\CreateKnowledgeBaseDocumentData;
-use App\Data\Tenant\KnowledgeBase\KnowledgeBaseDocumentData;
 use App\Data\Tenant\KnowledgeBase\UpdateKnowledgeBaseDocumentData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\API\KnowledgeBase\IndexKnowledgeBaseDocumentRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\StoreKnowledgeBaseDocumentRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\UpdateKnowledgeBaseDocumentRequest;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
+use App\Models\Tenant\KnowledgeBase\KnowledgeBaseCategory;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBaseDocument;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Gate;
 
 class KnowledgeBaseDocumentController extends Controller
 {
-    public function index(KnowledgeBase $knowledgeBase)
+    public function index(IndexKnowledgeBaseDocumentRequest $request, KnowledgeBaseCategory $category, ListKnowledgeBaseDocuments $action): JsonResponse
     {
-        $documents = KnowledgeBaseDocument::whereHas('category', function ($query) use ($knowledgeBase) {
-            $query->where('knowledge_base_id', $knowledgeBase->id);
-        })->paginate();
+        Gate::authorize('viewAny', KnowledgeBase::class);
 
-        return KnowledgeBaseDocumentData::collection($documents);
+        $items = $action($category, $request->validated());
+
+        return response()->json(['data' => $items]);
     }
 
-    public function store(CreateKnowledgeBaseDocumentData $data, KnowledgeBase $knowledgeBase)
+    public function store(StoreKnowledgeBaseDocumentRequest $request, KnowledgeBaseCategory $category, CreateKnowledgeBaseDocument $action): JsonResponse
     {
-        $categoryExists = $knowledgeBase->categories()->where('id', $data->knowledge_base_category_id)->exists();
-        abort_unless($categoryExists, 422, 'The category does not belong to the selected knowledge base.');
+        Gate::authorize('create', KnowledgeBase::class);
 
-        $authorId = request()->user()->id;
-        $slug = Str::slug($data->title).'-'.Str::random(5);
+        $data = CreateKnowledgeBaseDocumentData::from($request->validated());
+        $result = $action($category, $data);
 
-        $document = DB::transaction(function () use ($data, $authorId, $slug) {
-            $doc = KnowledgeBaseDocument::create([
-                'knowledge_base_category_id' => $data->knowledge_base_category_id,
-                'title' => $data->title,
-                'slug' => $slug,
-                'content_format' => $data->content_format ?? 'markdown',
-                'status' => 'draft',
-                'author_id' => $authorId,
-            ]);
-
-            $doc->versions()->create([
-                'version_number' => 1,
-                'content' => $data->content,
-                'author_id' => $authorId,
-                'change_summary' => 'Initial version',
-            ]);
-
-            return $doc;
-        });
-
-        return KnowledgeBaseDocumentData::from($document);
+        return response()->json(['data' => $result, 'message' => 'Knowledge base document created.'], 201);
     }
 
-    public function show(KnowledgeBase $knowledgeBase, KnowledgeBaseDocument $document)
+    public function show(KnowledgeBaseDocument $document, ShowKnowledgeBaseDocument $action): JsonResponse
     {
-        return KnowledgeBaseDocumentData::from($document);
+        Gate::authorize('view', KnowledgeBase::class);
+
+        return response()->json(['data' => $action($document)]);
     }
 
-    public function update(UpdateKnowledgeBaseDocumentData $data, KnowledgeBase $knowledgeBase, KnowledgeBaseDocument $document)
+    public function update(UpdateKnowledgeBaseDocumentRequest $request, KnowledgeBaseDocument $document, UpdateKnowledgeBaseDocument $action): JsonResponse
     {
-        $authorId = request()->user()->id;
+        Gate::authorize('update', KnowledgeBase::class);
 
-        DB::transaction(function () use ($data, $document, $authorId) {
-            $updateAttributes = [];
+        $data = UpdateKnowledgeBaseDocumentData::from($request->validated());
+        $result = $action($document, $data);
 
-            if ($data->title !== null) {
-                $updateAttributes['title'] = $data->title;
-                $updateAttributes['slug'] = Str::slug($data->title).'-'.Str::random(5);
-            }
-
-            if ($data->status !== null) {
-                $updateAttributes['status'] = $data->status;
-                if ($data->status === 'published' && $document->status !== 'published') {
-                    $updateAttributes['published_at'] = now();
-                }
-            }
-
-            if (! empty($updateAttributes)) {
-                $document->update($updateAttributes);
-            }
-
-            // Create a new version if content is provided
-            if ($data->content !== null) {
-                $latestVersion = $document->versions()->max('version_number') ?? 0;
-
-                $document->versions()->create([
-                    'version_number' => $latestVersion + 1,
-                    'content' => $data->content,
-                    'author_id' => $authorId,
-                    'change_summary' => 'Content updated',
-                ]);
-            }
-        });
-
-        return KnowledgeBaseDocumentData::from($document->refresh());
+        return response()->json(['data' => $result, 'message' => 'Knowledge base document updated.']);
     }
 
-    public function destroy(KnowledgeBase $knowledgeBase, KnowledgeBaseDocument $document): JsonResponse
+    public function destroy(KnowledgeBaseDocument $document, DeleteKnowledgeBaseDocument $action): Response
     {
-        $document->delete();
+        Gate::authorize('delete', KnowledgeBase::class);
 
-        return response()->json(null, 204);
+        $action($document);
+
+        return response()->noContent();
     }
 }

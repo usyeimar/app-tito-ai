@@ -4,55 +4,66 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Tenant\API\KnowledgeBase;
 
+use App\Actions\Tenant\KnowledgeBase\CreateKnowledgeBase;
+use App\Actions\Tenant\KnowledgeBase\DeleteKnowledgeBase;
+use App\Actions\Tenant\KnowledgeBase\ListKnowledgeBases;
+use App\Actions\Tenant\KnowledgeBase\ShowKnowledgeBase;
+use App\Actions\Tenant\KnowledgeBase\UpdateKnowledgeBase;
 use App\Data\Tenant\KnowledgeBase\CreateKnowledgeBaseData;
-use App\Data\Tenant\KnowledgeBase\KnowledgeBaseData;
 use App\Data\Tenant\KnowledgeBase\UpdateKnowledgeBaseData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\API\KnowledgeBase\IndexKnowledgeBaseRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\StoreKnowledgeBaseRequest;
+use App\Http\Requests\Tenant\API\KnowledgeBase\UpdateKnowledgeBaseRequest;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Str;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Gate;
 
 class KnowledgeBaseController extends Controller
 {
-    public function index()
+    public function index(IndexKnowledgeBaseRequest $request, ListKnowledgeBases $action): JsonResponse
     {
-        $knowledgeBases = KnowledgeBase::query()->paginate();
+        Gate::authorize('viewAny', KnowledgeBase::class);
 
-        return KnowledgeBaseData::collection($knowledgeBases);
+        $items = $action($request->validated());
+
+        return response()->json(['data' => $items]);
     }
 
-    public function store(CreateKnowledgeBaseData $data)
+    public function store(StoreKnowledgeBaseRequest $request, CreateKnowledgeBase $action): JsonResponse
     {
-        $attributes = $data->toArray();
-        $attributes['slug'] = Str::slug($data->name).'-'.Str::random(5);
+        Gate::authorize('create', KnowledgeBase::class);
 
-        $knowledgeBase = KnowledgeBase::create($attributes);
+        $data = CreateKnowledgeBaseData::from($request->validated());
+        $result = $action($data);
 
-        return KnowledgeBaseData::from($knowledgeBase);
+        return response()->json(['data' => $result, 'message' => 'Knowledge base created.'], 201);
     }
 
-    public function show(KnowledgeBase $knowledgeBase)
+    public function show(KnowledgeBase $knowledgeBase, ShowKnowledgeBase $action): JsonResponse
     {
-        return KnowledgeBaseData::from($knowledgeBase);
+        Gate::authorize('view', KnowledgeBase::class);
+
+        return response()->json(['data' => $action($knowledgeBase)]);
     }
 
-    public function update(UpdateKnowledgeBaseData $data, KnowledgeBase $knowledgeBase)
+    public function update(UpdateKnowledgeBaseRequest $request, KnowledgeBase $knowledgeBase, UpdateKnowledgeBase $action): JsonResponse
     {
-        $attributes = array_filter($data->toArray(), fn ($value) => $value !== null);
+        Gate::authorize('update', KnowledgeBase::class);
 
-        if (isset($attributes['name'])) {
-            $attributes['slug'] = Str::slug($attributes['name']).'-'.Str::random(5);
-        }
+        $data = UpdateKnowledgeBaseData::from($request->validated());
+        $result = $action($knowledgeBase, $data);
 
-        $knowledgeBase->update($attributes);
-
-        return KnowledgeBaseData::from($knowledgeBase);
+        return response()->json(['data' => $result, 'message' => 'Knowledge base updated.']);
     }
 
-    public function destroy(KnowledgeBase $knowledgeBase): JsonResponse
+    public function destroy(KnowledgeBase $knowledgeBase, DeleteKnowledgeBase $action): Response
     {
-        $knowledgeBase->delete();
+        Gate::authorize('delete', KnowledgeBase::class);
 
-        return response()->json(null, 204);
+        $action($knowledgeBase);
+
+        return response()->noContent();
     }
 }
