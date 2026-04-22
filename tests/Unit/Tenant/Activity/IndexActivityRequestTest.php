@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Tenant\Activity;
 
-use App\Http\Requests\Tenant\Activity\IndexActivityRequest;
+use App\Http\Requests\Tenant\API\Activity\IndexActivityRequest;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
 use ReflectionMethod;
 use Tests\TestCase;

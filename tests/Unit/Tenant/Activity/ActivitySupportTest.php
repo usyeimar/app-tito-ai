@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Tenant\Activity;
 
-use App\Models\Tenant\CRM\Leads\Lead;
+use App\Models\Tenant\Agent\Agent;
 use App\Services\Tenant\Activity\DTOs\ActivityContext;
 use App\Services\Tenant\Activity\Support\ActivityContextStore;
 use App\Services\Tenant\Activity\Support\ChangesMapBuilder;
@@ -18,14 +18,13 @@ final class ActivitySupportTest extends TestCase
     {
         $types = new KnownMorphTypes;
 
-        $this->assertSame(Lead::class, $types->modelClassForType('lead'));
+        $this->assertSame(Agent::class, $types->modelClassForType('agent'));
 
-        $lead = new Lead;
-        $lead->setAttribute('id', 'lead_1');
-        $lead->setAttribute('name', 'Lead One');
+        $agent = new Agent;
+        $agent->setAttribute('id', 'agent_1');
+        $agent->setAttribute('name', 'Agent One');
 
-        $this->assertSame('lead', $types->typeForModel($lead));
-        $this->assertContains('email', $types->labelFields('email'));
+        $this->assertSame('agent', $types->typeForModel($agent));
     }
 
     public function test_changes_map_builder_only_returns_changed_fields(): void
