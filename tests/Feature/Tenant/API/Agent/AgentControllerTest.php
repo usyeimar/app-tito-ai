@@ -122,13 +122,13 @@ describe('Agent API', function () {
         });
 
         describe('Delete', function () {
-            it('deletes an agent', function () {
+            it('deletes an agent ', function () {
                 $agent = Agent::factory()->create();
 
                 $response = $this->actingAs($this->user, 'tenant-api')
                     ->deleteJson($this->tenantApiUrl("ai/agents/{$agent->id}"));
 
-                $response->assertOk();
+                $response->assertNoContent();
                 expect(Agent::query()->whereKey($agent->id)->exists())->toBeFalse();
             });
         });
