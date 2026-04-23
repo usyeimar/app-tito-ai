@@ -45,36 +45,47 @@ export async function tenantApi<T = unknown>(
     const normalized = path.startsWith('/') ? path : `/${path}`;
     const url = `/${slug}/api${normalized}`;
 
-    const headers = new Headers(options.headers);
-    headers.set('Accept', 'application/json');
-    headers.set('X-Requested-With', 'XMLHttpRequest');
-    headers.set('X-Auth-Mode', 'cookie');
+    const doFetch = async (): Promise<Response> => {
+        const headers = new Headers(options.headers);
+        headers.set('Accept', 'application/json');
+        headers.set('X-Requested-With', 'XMLHttpRequest');
+        headers.set('X-Auth-Mode', 'cookie');
 
-    const xsrf = getCookie('XSRF-TOKEN');
-    if (xsrf) {
-        headers.set('X-XSRF-TOKEN', decodeURIComponent(xsrf));
-    }
-
-    let body: BodyInit | undefined;
-    if (options.body !== undefined && options.body !== null) {
-        if (
-            options.body instanceof FormData ||
-            options.body instanceof Blob ||
-            typeof options.body === 'string'
-        ) {
-            body = options.body as BodyInit;
-        } else {
-            headers.set('Content-Type', 'application/json');
-            body = JSON.stringify(options.body);
+        const xsrf = getCookie('XSRF-TOKEN');
+        if (xsrf) {
+            headers.set('X-XSRF-TOKEN', decodeURIComponent(xsrf));
         }
-    }
 
-    const response = await fetch(url, {
-        ...options,
-        headers,
-        body,
-        credentials: 'include',
-    });
+        let body: BodyInit | undefined;
+        if (options.body !== undefined && options.body !== null) {
+            if (
+                options.body instanceof FormData ||
+                options.body instanceof Blob ||
+                typeof options.body === 'string'
+            ) {
+                body = options.body as BodyInit;
+            } else {
+                headers.set('Content-Type', 'application/json');
+                body = JSON.stringify(options.body);
+            }
+        }
+
+        return fetch(url, {
+            ...options,
+            headers,
+            body,
+            credentials: 'include',
+        });
+    };
+
+    let response = await doFetch();
+
+    // On first page visit the laravel_token cookie may not exist yet.
+    // Retry once after a short delay to allow the cookie to be set.
+    if (response.status === 401 && !options.method?.match(/^(PUT|PATCH|DELETE)$/i)) {
+        await new Promise((r) => setTimeout(r, 500));
+        response = await doFetch();
+    }
 
     const contentType = response.headers.get('Content-Type') ?? '';
     const payload = contentType.includes('application/json')
