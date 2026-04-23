@@ -13,9 +13,9 @@ Pipeline: chunking → embeddings → vector store upload, wired into `CreateKno
 ## Actions
 - [x] `CreateKnowledgeBase` → after `create()`, `Stores::create($kb->name)` and persist `vector_store_id`. Fail soft in tests (tolerate faked stores).
 - [x] `CreateKnowledgeBaseDocument` → after transaction, `dispatch(new IngestKnowledgeBaseDocument($doc->id))`
-- [ ] `UpdateKnowledgeBaseDocument` (future) → re-dispatch `IngestKnowledgeBaseDocument`
-- [ ] `DeleteKnowledgeBaseDocument` (future) → `DeindexKnowledgeBaseDocument` job
-- [ ] `DeleteKnowledgeBase` (future) → `Stores::delete($kb->vector_store_id)`
+- [x] `UpdateKnowledgeBaseDocument` → re-dispatches `IngestKnowledgeBaseDocument` when title or content changes
+- [x] `DeleteKnowledgeBaseDocument` → dispatches `DeindexKnowledgeBaseDocument` job when document has vector_store_file_id
+- [x] `DeleteKnowledgeBase` → calls `Stores::delete($kb->vector_store_id)` (fail-soft)
 
 ## Job
 - [x] `App\Jobs\Tenant\KnowledgeBase\IngestKnowledgeBaseDocument` (ShouldQueue, tries=3)
@@ -27,6 +27,11 @@ Pipeline: chunking → embeddings → vector store upload, wired into `CreateKno
   - `$store->add($file->id)`
   - Update document: `vector_store_file_id`, `indexing_status='indexed'`, `indexed_at=now()`
   - On failure → `indexing_status='failed'`, `indexing_error=$throwable->getMessage()`
+
+- [x] `App\Jobs\Tenant\KnowledgeBase\DeindexKnowledgeBaseDocument` (ShouldQueue, tries=3)
+  - Accepts `vectorStoreId` and `vectorStoreFileId`
+  - `Stores::get($vectorStoreId)->remove($vectorStoreFileId, deleteFile: true)`
+  - On failure → logs error and re-throws for retry
 
 ## Config
 - Uses `config/ai.php` defaults (`openai` for embeddings). Only env required: `OPENAI_API_KEY`.
