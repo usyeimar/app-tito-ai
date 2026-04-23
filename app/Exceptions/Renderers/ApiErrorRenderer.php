@@ -9,7 +9,10 @@ abstract class ApiErrorRenderer
 {
     protected static function shouldRenderJson(Request $request): bool
     {
-        return $request->expectsJson() || $request->is('api/*') || $request->is('oauth/*');
+        return $request->expectsJson()
+            || $request->is('api/*')
+            || $request->is('*/api/*')
+            || $request->is('oauth/*');
     }
 
     protected static function singleErrorResponse(

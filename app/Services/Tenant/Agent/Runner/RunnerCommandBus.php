@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
  * Used for operations that don't need a response (terminate, etc.).
  * Session creation uses HTTP directly — see RunnerClient.
  */
-final class RunnerCommandBus
+class RunnerCommandBus
 {
     private const COMMANDS_KEY = 'runner:commands';
 
