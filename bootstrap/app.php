@@ -1,13 +1,15 @@
 <?php
 
 use App\Exceptions\Renderers\CoreExceptionRenderer;
+use App\Exceptions\Renderers\Tenant\AuthExceptionRenderer;
 use App\Exceptions\Renderers\Tenant\SystemExceptionRenderer;
 use App\Http\Middleware\EnsureCookieAuthOrigin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HasAccesToWorkSpace;
+use App\Http\Middleware\HydrateCentralAuth;
+use App\Http\Middleware\HydrateTenantAuth;
 use App\Http\Middleware\InjectAccessTokenFromCookie;
-use App\Http\Middleware\RestoreCentralAuth;
 use App\Http\Middleware\ShareWorkspacesWithInertia;
 use App\Http\Middleware\WrapApiResponses;
 use Illuminate\Foundation\Application;
@@ -15,6 +17,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -27,8 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        // Ensure HydrateCentralAuth and HydrateTenantAuth run after
+        // StartSession but before Authenticate in the middleware priority.
+        // Without this, Laravel's priority system reorders Authenticate:tenant
+        // to run before these middleware, causing auth failures on tenant routes.
+        $middleware->appendToPriorityList(ShareErrorsFromSession::class, HydrateCentralAuth::class);
+        $middleware->appendToPriorityList(HydrateCentralAuth::class, HydrateTenantAuth::class);
+
         $middleware->web(append: [
-            RestoreCentralAuth::class,
+            HydrateCentralAuth::class,
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
@@ -55,7 +65,8 @@ return Application::configure(basePath: dirname(__DIR__))
             return $request->expectsJson() || $request->is('api/*') || $request->is('*/api/*') || $request->is('oauth/*');
         });
 
-        CoreExceptionRenderer::register($exceptions);
+        AuthExceptionRenderer::register($exceptions);
         SystemExceptionRenderer::register($exceptions);
+        CoreExceptionRenderer::register($exceptions);
 
     })->create();
