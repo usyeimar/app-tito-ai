@@ -1,7 +1,6 @@
 <?php
 
 use App\Jobs\Central\Tenancy\SeedDevelopmentTenantData;
-use Database\Seeders\Tenant\DevelopmentTenantDatabaseSeeder;
 use Database\Seeders\Tenant\PassportClientsSeeder;
 use Database\Seeders\Tenant\PermissionsSeeder;
 use Database\Seeders\Tenant\SystemConfigurationsSeeder;

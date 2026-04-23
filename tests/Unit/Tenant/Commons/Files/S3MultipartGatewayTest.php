@@ -10,7 +10,7 @@ class S3MultipartGatewayTest extends TestCase
 {
     public function test_it_prefers_explicit_presign_endpoint_when_configured(): void
     {
-        config()->set('app.url', 'https://workupcloud.test:4443');
+        config()->set('app.url', 'https://app.tito.ai:4443');
         $this->app->detectEnvironment(fn (): string => 'local');
 
         $endpoint = $this->resolvePresignEndpoint([
@@ -24,24 +24,24 @@ class S3MultipartGatewayTest extends TestCase
 
     public function test_it_uses_application_url_for_internal_url_host_in_local_environment(): void
     {
-        config()->set('app.url', 'https://workupcloud.test:4443');
+        config()->set('app.url', 'https://app.tito.ai:4443');
         $this->app->detectEnvironment(fn (): string => 'local');
 
         $endpoint = $this->resolvePresignEndpoint([
-            'url' => 'http://rustfs:9000/workupcloud-local',
+            'url' => 'http://rustfs:9000/tito-local',
             'endpoint' => 'http://rustfs:9000',
         ]);
 
-        $this->assertSame('https://workupcloud.test:4443', $endpoint);
+        $this->assertSame('https://app.tito.ai:4443', $endpoint);
     }
 
     public function test_it_does_not_rewrite_internal_url_host_outside_local_environment(): void
     {
-        config()->set('app.url', 'https://workupcloud.test:4443');
+        config()->set('app.url', 'https://app.tito.ai:4443');
         $this->app->detectEnvironment(fn (): string => 'staging');
 
         $endpoint = $this->resolvePresignEndpoint([
-            'url' => 'http://rustfs:9000/workupcloud-local',
+            'url' => 'http://rustfs:9000/tito-local',
             'endpoint' => 'http://rustfs:9000',
         ]);
 
@@ -50,11 +50,11 @@ class S3MultipartGatewayTest extends TestCase
 
     public function test_it_keeps_localhost_url_in_local_environment(): void
     {
-        config()->set('app.url', 'https://workupcloud.test:4443');
+        config()->set('app.url', 'https://app.tito.ai:4443');
         $this->app->detectEnvironment(fn (): string => 'local');
 
         $endpoint = $this->resolvePresignEndpoint([
-            'url' => 'http://localhost:9010/workupcloud-local',
+            'url' => 'http://localhost:9010/tito-local',
             'endpoint' => 'http://rustfs:9000',
         ]);
 
@@ -89,7 +89,8 @@ class S3MultipartGatewayTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed>  $config
+     * @param array<string, mixed> $config
+     * @throws \ReflectionException
      */
     private function resolvePresignEndpoint(array $config): ?string
     {
