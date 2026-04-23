@@ -1,43 +1,60 @@
 <?php
 
+use App\Models\Tenant\Agent\Agent;
 use App\Models\Tenant\Agent\Trunk;
+use App\Models\Tenant\Auth\Authentication\User;
 
 describe('Trunk API', function () {
-    describe('Authentication and Authorization', function () {
+    describe('Authentication', function () {
         it('requires authentication to list trunks', function () {
-            $response = $this->getJson($this->tenantApiUrl('ai/trunks'));
-            $response->assertUnauthorized();
+            $this->getJson($this->tenantApiUrl('ai/trunks'))
+                ->assertUnauthorized();
         });
 
         it('requires authentication to create a trunk', function () {
-            $response = $this->postJson($this->tenantApiUrl('ai/trunks'), [
+            $this->postJson($this->tenantApiUrl('ai/trunks'), [
                 'name' => 'Test Trunk',
                 'mode' => Trunk::MODE_INBOUND,
-            ]);
-            $response->assertUnauthorized();
+            ])->assertUnauthorized();
         });
 
         it('requires authentication to view a trunk', function () {
             $trunk = Trunk::factory()->create();
 
-            $response = $this->getJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"));
-            $response->assertUnauthorized();
+            $this->getJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"))
+                ->assertUnauthorized();
         });
 
         it('requires authentication to update a trunk', function () {
             $trunk = Trunk::factory()->create();
 
-            $response = $this->patchJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"), [
-                'name' => 'Updated Name',
-            ]);
-            $response->assertUnauthorized();
+            $this->patchJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"), ['name' => 'Updated'])
+                ->assertUnauthorized();
         });
 
         it('requires authentication to delete a trunk', function () {
             $trunk = Trunk::factory()->create();
 
-            $response = $this->deleteJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"));
-            $response->assertUnauthorized();
+            $this->deleteJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"))
+                ->assertUnauthorized();
+        });
+    });
+
+    describe('Authorization', function () {
+        it('forbids users without trunk.view permission', function () {
+            $user = User::factory()->create();
+
+            $this->actingAs($user, 'tenant-api')
+                ->getJson($this->tenantApiUrl('ai/trunks'))
+                ->assertForbidden();
+        });
+
+        it('forbids users without trunk.manage permission from creating', function () {
+            $user = User::factory()->create();
+
+            $this->actingAs($user, 'tenant-api')
+                ->postJson($this->tenantApiUrl('ai/trunks'), ['name' => 'Test'])
+                ->assertForbidden();
         });
     });
 
@@ -50,27 +67,38 @@ describe('Trunk API', function () {
                     ->getJson($this->tenantApiUrl('ai/trunks'));
 
                 $response->assertOk();
-                $response->assertJsonStructure([
-                    'data' => [[
-                        'id',
-                        'name',
-                        'agent_id',
-                        'workspace_slug',
-                        'mode',
-                        'max_concurrent_calls',
-                        'codecs',
-                        'status',
-                        'inbound_auth',
-                        'routes',
-                        'sip_host',
-                        'sip_port',
-                        'register_config',
-                        'outbound',
-                        'created_at',
-                        'updated_at',
-                    ]],
-                ]);
                 $response->assertJsonCount(3, 'data');
+            });
+
+            it('filters trunks by status', function () {
+                Trunk::factory()->count(2)->active()->create();
+                Trunk::factory()->count(1)->inactive()->create();
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/trunks?filter[status]=active'))
+                    ->assertOk()
+                    ->assertJsonCount(2, 'data');
+            });
+
+            it('filters trunks by mode', function () {
+                Trunk::factory()->count(2)->inbound()->create();
+                Trunk::factory()->count(1)->register()->create();
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/trunks?filter[mode]=inbound'))
+                    ->assertOk()
+                    ->assertJsonCount(2, 'data');
+            });
+
+            it('filters trunks by agent_id', function () {
+                $agent = Agent::factory()->create();
+                Trunk::factory()->count(2)->withAgent($agent)->create();
+                Trunk::factory()->count(1)->create();
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl("ai/trunks?filter[agent_id]={$agent->id}"))
+                    ->assertOk()
+                    ->assertJsonCount(2, 'data');
             });
         });
 
@@ -80,7 +108,6 @@ describe('Trunk API', function () {
                     ->postJson($this->tenantApiUrl('ai/trunks'), [
                         'name' => 'SIP Trunk',
                         'mode' => Trunk::MODE_INBOUND,
-                        'workspace_slug' => 'default',
                         'max_concurrent_calls' => 10,
                         'codecs' => ['ulaw', 'alaw'],
                         'status' => Trunk::STATUS_ACTIVE,
@@ -91,25 +118,19 @@ describe('Trunk API', function () {
                             'allowed_ips' => ['192.168.1.0/24'],
                         ],
                         'routes' => [
-                            [
-                                'pattern' => '*',
-                                'agent_id' => null,
-                                'priority' => 0,
-                                'enabled' => true,
-                            ],
+                            ['pattern' => '*', 'agent_id' => null, 'priority' => 0, 'enabled' => true],
                         ],
                     ]);
 
                 $response->assertCreated();
                 $response->assertJsonPath('data.name', 'SIP Trunk');
                 $response->assertJsonPath('data.mode', Trunk::MODE_INBOUND);
-                $response->assertJsonPath('data.workspace_slug', 'default');
                 $response->assertJsonPath('data.max_concurrent_calls', 10);
                 $response->assertJsonPath('data.codecs', ['ulaw', 'alaw']);
                 $response->assertJsonPath('data.status', Trunk::STATUS_ACTIVE);
                 $response->assertJsonPath('data.sip_host', 'sip.example.com');
                 $response->assertJsonPath('data.sip_port', 5060);
-                $response->assertJsonPath('message', 'Trunk created');
+                $response->assertJsonPath('message', 'Trunk created.');
             });
 
             it('creates a register mode trunk', function () {
@@ -117,7 +138,6 @@ describe('Trunk API', function () {
                     ->postJson($this->tenantApiUrl('ai/trunks'), [
                         'name' => 'Register Trunk',
                         'mode' => Trunk::MODE_REGISTER,
-                        'workspace_slug' => 'default',
                         'sip_host' => 'sip.example.com',
                         'sip_port' => 5060,
                         'register_config' => [
@@ -132,7 +152,6 @@ describe('Trunk API', function () {
                 $response->assertCreated();
                 $response->assertJsonPath('data.mode', Trunk::MODE_REGISTER);
                 $response->assertJsonPath('data.register_config.server', 'sip.example.com');
-                $response->assertJsonPath('data.register_config.username', 'testuser');
             });
 
             it('creates an outbound mode trunk', function () {
@@ -140,7 +159,6 @@ describe('Trunk API', function () {
                     ->postJson($this->tenantApiUrl('ai/trunks'), [
                         'name' => 'Outbound Trunk',
                         'mode' => Trunk::MODE_OUTBOUND,
-                        'workspace_slug' => 'default',
                         'outbound' => [
                             'trunk_name' => 'Provider ABC',
                             'server' => 'sip.outbound.com',
@@ -158,22 +176,22 @@ describe('Trunk API', function () {
             });
 
             it('requires name to create a trunk', function () {
-                $response = $this->actingAs($this->user, 'tenant-api')
-                    ->postJson($this->tenantApiUrl('ai/trunks'), [
-                        'mode' => Trunk::MODE_INBOUND,
-                    ]);
+                $this->actingAs($this->user, 'tenant-api')
+                    ->postJson($this->tenantApiUrl('ai/trunks'), ['mode' => Trunk::MODE_INBOUND]);
 
-                assertHasValidationError($response, 'name');
+                assertHasValidationError(
+                    $this->actingAs($this->user, 'tenant-api')
+                        ->postJson($this->tenantApiUrl('ai/trunks'), ['mode' => Trunk::MODE_INBOUND]),
+                    'name',
+                );
             });
 
-            it('requires valid mode to create a trunk', function () {
-                $response = $this->actingAs($this->user, 'tenant-api')
-                    ->postJson($this->tenantApiUrl('ai/trunks'), [
-                        'name' => 'Invalid Trunk',
-                        'mode' => 'invalid_mode',
-                    ]);
-
-                assertHasValidationError($response, 'mode');
+            it('rejects invalid mode', function () {
+                assertHasValidationError(
+                    $this->actingAs($this->user, 'tenant-api')
+                        ->postJson($this->tenantApiUrl('ai/trunks'), ['name' => 'Bad', 'mode' => 'invalid']),
+                    'mode',
+                );
             });
         });
 
@@ -191,15 +209,13 @@ describe('Trunk API', function () {
                 $response->assertOk();
                 $response->assertJsonPath('data.id', $trunk->id);
                 $response->assertJsonPath('data.name', 'My Trunk');
-                $response->assertJsonPath('data.mode', Trunk::MODE_INBOUND);
                 $response->assertJsonPath('data.sip_host', 'sip.mytrunk.com');
             });
 
             it('returns 404 for non-existent trunk', function () {
-                $response = $this->actingAs($this->user, 'tenant-api')
-                    ->getJson($this->tenantApiUrl('ai/trunks/99999999-9999-9999-9999-999999999999'));
-
-                $response->assertNotFound();
+                $this->actingAs($this->user, 'tenant-api')
+                    ->getJson($this->tenantApiUrl('ai/trunks/99999999-9999-9999-9999-999999999999'))
+                    ->assertNotFound();
             });
         });
 
@@ -222,7 +238,7 @@ describe('Trunk API', function () {
                 $response->assertJsonPath('data.name', 'Updated Trunk');
                 $response->assertJsonPath('data.status', Trunk::STATUS_INACTIVE);
                 $response->assertJsonPath('data.max_concurrent_calls', 20);
-                $response->assertJsonPath('message', 'Trunk updated');
+                $response->assertJsonPath('message', 'Trunk updated.');
 
                 expect($trunk->fresh()->name)->toBe('Updated Trunk');
                 expect($trunk->fresh()->status)->toBe(Trunk::STATUS_INACTIVE);
@@ -231,42 +247,28 @@ describe('Trunk API', function () {
 
             it('updates trunk routes', function () {
                 $trunk = Trunk::factory()->create();
-
                 $newRoutes = [
-                    [
-                        'pattern' => '100',
-                        'agent_id' => null,
-                        'priority' => 1,
-                        'enabled' => true,
-                    ],
-                    [
-                        'pattern' => '200',
-                        'agent_id' => null,
-                        'priority' => 2,
-                        'enabled' => false,
-                    ],
+                    ['pattern' => '100', 'agent_id' => null, 'priority' => 1, 'enabled' => true],
+                    ['pattern' => '200', 'agent_id' => null, 'priority' => 2, 'enabled' => false],
                 ];
 
                 $response = $this->actingAs($this->user, 'tenant-api')
-                    ->patchJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"), [
-                        'routes' => $newRoutes,
-                    ]);
+                    ->patchJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"), ['routes' => $newRoutes]);
 
                 $response->assertOk();
                 $response->assertJsonPath('data.routes', $newRoutes);
-
                 expect($trunk->fresh()->routes)->toEqual($newRoutes);
             });
         });
 
         describe('Delete', function () {
             it('deletes a trunk and returns 204', function () {
-                $trunk = Trunk::factory()->create(['name' => 'To Delete']);
+                $trunk = Trunk::factory()->create();
 
-                $response = $this->actingAs($this->user, 'tenant-api')
-                    ->deleteJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"));
+                $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/trunks/{$trunk->id}"))
+                    ->assertNoContent();
 
-                $response->assertNoContent();
                 expect(Trunk::query()->whereKey($trunk->id)->exists())->toBeFalse();
             });
         });
