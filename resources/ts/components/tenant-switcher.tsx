@@ -52,7 +52,7 @@ export function TenantSwitcher() {
                                 Workspaces
                             </DropdownMenuLabel>
                             {workspaces.map((ws) => (
-                                <DropdownMenuItem key={ws.id} render={<a href={`/workspaces/${ws.slug}/changer`} />}>
+                                <DropdownMenuItem key={ws.id} render={<a href={`/workspaces/${ws.slug}/change`} />}>
                                     <div className="flex w-full items-center gap-2 p-2">
                                         <div className="flex size-6 items-center justify-center rounded-sm border">
                                             <Building2 className="size-4 shrink-0" />
