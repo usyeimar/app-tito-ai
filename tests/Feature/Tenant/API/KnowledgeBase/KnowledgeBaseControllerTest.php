@@ -108,6 +108,26 @@ describe('Knowledge Base API', function () {
                 $response->assertNoContent();
                 expect(KnowledgeBase::query()->whereKey($kb->id)->exists())->toBeFalse();
             });
+
+            it('deletes the vector store when deleting a knowledge base', function () {
+                $kb = KnowledgeBase::factory()->create(['vector_store_id' => Stores::fakeId('Test KB')]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}"))
+                    ->assertNoContent();
+
+                Stores::assertDeleted($kb->vector_store_id);
+            });
+
+            it('succeeds even when vector store deletion fails', function () {
+                $kb = KnowledgeBase::factory()->create(['vector_store_id' => null]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}"))
+                    ->assertNoContent();
+
+                Stores::assertNothingDeleted();
+            });
         });
     });
 });

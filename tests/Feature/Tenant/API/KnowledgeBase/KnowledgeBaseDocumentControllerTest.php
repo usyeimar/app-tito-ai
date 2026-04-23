@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\Tenant\KnowledgeBase\DeindexKnowledgeBaseDocument;
 use App\Jobs\Tenant\KnowledgeBase\IngestKnowledgeBaseDocument;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBase;
 use App\Models\Tenant\KnowledgeBase\KnowledgeBaseCategory;
@@ -7,7 +8,7 @@ use App\Models\Tenant\KnowledgeBase\KnowledgeBaseDocument;
 use Illuminate\Support\Facades\Bus;
 
 beforeEach(function (): void {
-    Bus::fake([IngestKnowledgeBaseDocument::class]);
+    Bus::fake([IngestKnowledgeBaseDocument::class, DeindexKnowledgeBaseDocument::class]);
 });
 
 describe('Knowledge Base Document API', function () {
@@ -126,6 +127,56 @@ describe('Knowledge Base Document API', function () {
 
                 expect($document->fresh()->title)->toBe('Updated Title');
             });
+
+            it('dispatches re-ingestion when title changes', function () {
+                $kb = KnowledgeBase::factory()->create();
+                $category = KnowledgeBaseCategory::factory()->create(['knowledge_base_id' => $kb->id]);
+                $document = KnowledgeBaseDocument::factory()->create([
+                    'knowledge_base_category_id' => $category->id,
+                    'title' => 'Original',
+                ]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->patchJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}/documents/{$document->id}"), [
+                        'title' => 'New Title',
+                    ])
+                    ->assertOk();
+
+                Bus::assertDispatched(IngestKnowledgeBaseDocument::class, fn ($job) => $job->documentId === $document->id);
+            });
+
+            it('dispatches re-ingestion when content changes', function () {
+                $kb = KnowledgeBase::factory()->create();
+                $category = KnowledgeBaseCategory::factory()->create(['knowledge_base_id' => $kb->id]);
+                $document = KnowledgeBaseDocument::factory()->create([
+                    'knowledge_base_category_id' => $category->id,
+                ]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->patchJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}/documents/{$document->id}"), [
+                        'content' => '# Updated content',
+                    ])
+                    ->assertOk();
+
+                Bus::assertDispatched(IngestKnowledgeBaseDocument::class, fn ($job) => $job->documentId === $document->id);
+            });
+
+            it('does not dispatch re-ingestion when only status changes', function () {
+                $kb = KnowledgeBase::factory()->create();
+                $category = KnowledgeBaseCategory::factory()->create(['knowledge_base_id' => $kb->id]);
+                $document = KnowledgeBaseDocument::factory()->create([
+                    'knowledge_base_category_id' => $category->id,
+                    'status' => 'draft',
+                ]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->patchJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}/documents/{$document->id}"), [
+                        'status' => 'published',
+                    ])
+                    ->assertOk();
+
+                Bus::assertNotDispatched(IngestKnowledgeBaseDocument::class);
+            });
         });
 
         describe('Delete', function () {
@@ -139,6 +190,40 @@ describe('Knowledge Base Document API', function () {
 
                 $response->assertNoContent();
                 expect(KnowledgeBaseDocument::query()->whereKey($document->id)->exists())->toBeFalse();
+            });
+
+            it('dispatches deindex job when deleting an indexed document', function () {
+                $kb = KnowledgeBase::factory()->create(['vector_store_id' => 'vs_test_123']);
+                $category = KnowledgeBaseCategory::factory()->create(['knowledge_base_id' => $kb->id]);
+                $document = KnowledgeBaseDocument::factory()->create([
+                    'knowledge_base_category_id' => $category->id,
+                    'vector_store_file_id' => 'file_test_456',
+                    'indexing_status' => 'indexed',
+                ]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}/documents/{$document->id}"))
+                    ->assertNoContent();
+
+                Bus::assertDispatched(DeindexKnowledgeBaseDocument::class, function ($job) {
+                    return $job->vectorStoreId === 'vs_test_123'
+                        && $job->vectorStoreFileId === 'file_test_456';
+                });
+            });
+
+            it('does not dispatch deindex job when document was never indexed', function () {
+                $kb = KnowledgeBase::factory()->create(['vector_store_id' => null]);
+                $category = KnowledgeBaseCategory::factory()->create(['knowledge_base_id' => $kb->id]);
+                $document = KnowledgeBaseDocument::factory()->create([
+                    'knowledge_base_category_id' => $category->id,
+                    'vector_store_file_id' => null,
+                ]);
+
+                $this->actingAs($this->user, 'tenant-api')
+                    ->deleteJson($this->tenantApiUrl("ai/knowledge-bases/{$kb->id}/documents/{$document->id}"))
+                    ->assertNoContent();
+
+                Bus::assertNotDispatched(DeindexKnowledgeBaseDocument::class);
             });
         });
     });
