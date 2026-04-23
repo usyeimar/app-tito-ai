@@ -71,7 +71,6 @@ class TenantController extends Controller
                 $redirectUrl,
             );
 
-            // dd($result);
             Log::info('Tenant impersonation URL created.', [
                 'user_id' => $request->user()?->id,
                 'tenant' => $tenant->slug,
@@ -79,13 +78,9 @@ class TenantController extends Controller
                 'ip' => $request->ip(),
             ]);
         } catch (AuthorizationException $e) {
-            dump($e->getMessage());
-
             return redirect()->route('workspaces')
                 ->withErrors(['message' => 'You do not have access to this workspace.']);
         } catch (TenantImpersonationUnavailableException $e) {
-            dump($e->getMessage());
-
             return redirect()->route('workspaces')
                 ->withErrors(['message' => $e->getMessage()]);
         }
