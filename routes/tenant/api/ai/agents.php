@@ -53,6 +53,10 @@ Route::post('runner/sessions/{sessionId}/user-ended', [AgentTestCallController::
     ->name('ai.runner.session.user-ended')
     ->withoutMiddleware(['auth:tenant-api', 'auth:api']);
 
+Route::get('runner/sessions/{sessionId}/transcripts', [AgentTestCallController::class, 'transcripts'])
+    ->name('ai.runner.session.transcripts')
+    ->withoutMiddleware(['auth:tenant-api', 'auth:api']);
+
 // Runner endpoints: HMAC signature verification + rate limiting
 Route::middleware([VerifyRunnerSignature::class, 'throttle:runner-webhook'])
     ->withoutMiddleware(['auth:tenant-api', 'auth:api'])

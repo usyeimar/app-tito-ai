@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Tenant\Web\Agent;
 
+use App\Actions\Tenant\Agent\CreateAgent;
 use App\Actions\Tenant\Agent\ListAgents;
 use App\Actions\Tenant\Agent\ShowAgent;
 use App\Data\Tenant\Agent\AgentSummaryData;
+use App\Data\Tenant\Agent\CreateAgentData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\API\Agent\StoreAgentRequest;
 use App\Models\Tenant\Agent\Agent;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,7 +28,7 @@ class AgentPageController extends Controller
             'tenant' => $this->tenantPayload(),
             'agent' => null,
             'agents' => Inertia::defer(fn () => $listAction()
-                ->through(fn (Agent $a) => AgentSummaryData::fromAgent($a)->toArray())
+                ->through(fn (Agent $a) => AgentSummaryData::fromAgent($a, '')->toArray())
                 ->items()),
         ]);
     }
@@ -37,9 +41,21 @@ class AgentPageController extends Controller
             'tenant' => $this->tenantPayload(),
             'agent' => $showAction($agent)->toArray(),
             'agents' => Inertia::defer(fn () => $listAction()
-                ->through(fn (Agent $a) => AgentSummaryData::fromAgent($a)->toArray())
+                ->through(fn (Agent $a) => AgentSummaryData::fromAgent($a, '')->toArray())
                 ->items()),
         ]);
+    }
+
+    public function store(StoreAgentRequest $request, CreateAgent $action): JsonResponse
+    {
+        Gate::authorize('create', Agent::class);
+
+        $agentData = $action(CreateAgentData::from($request->validated()));
+
+        return response()->json([
+            'data' => $agentData->toArray(),
+            'message' => 'Agent created',
+        ], 201);
     }
 
     /**
