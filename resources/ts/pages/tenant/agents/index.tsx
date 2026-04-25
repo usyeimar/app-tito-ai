@@ -19,7 +19,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { tenantApi, TenantApiError } from '@/lib/tenant-api';
+import { webGet, webPost, webDelete, TenantApiError } from '@/lib/tenant-api';
 import { cn } from '@/lib/utils';
 import type { Agent, TenantSummary } from '@/types/agent';
 import type { BreadcrumbItem } from '@/types';
@@ -55,9 +55,9 @@ export default function AgentsIndex({ tenant }: Props) {
             const params = new URLSearchParams();
             if (searchTerm) params.set('filter[search]', searchTerm);
             const qs = params.toString();
-            const result = await tenantApi<{ data: Agent[] }>(
+            const result = await webGet<{ data: Agent[] }>(
                 tenant.slug,
-                `/ai/agents${qs ? `?${qs}` : ''}`,
+                `/agents${qs ? `?${qs}` : ''}`,
             );
             setAgents(result.data);
         } catch (err) {
@@ -88,17 +88,14 @@ export default function AgentsIndex({ tenant }: Props) {
         setSubmitting(true);
         setFormError(null);
         try {
-            const result = await tenantApi<{ data: Agent }>(
+            const result = await webPost<{ data: Agent }>(
                 tenant.slug,
-                '/ai/agents',
+                '/agents',
                 {
-                    method: 'POST',
-                    body: {
-                        name,
-                        slug: null,
-                        description: description || null,
-                        language,
-                    },
+                    name,
+                    slug: null,
+                    description: description || null,
+                    language,
                 },
             );
             setCreateOpen(false);
@@ -120,9 +117,7 @@ export default function AgentsIndex({ tenant }: Props) {
     const handleDelete = async (agent: Agent) => {
         if (!confirm(`¿Eliminar el asistente "${agent.name}"?`)) return;
         try {
-            await tenantApi(tenant.slug, `/ai/agents/${agent.id}`, {
-                method: 'DELETE',
-            });
+            await webDelete(tenant.slug, `/agents/${agent.id}`);
             router.visit(`/${tenant.slug}/agents`);
         } catch (err) {
             alert(

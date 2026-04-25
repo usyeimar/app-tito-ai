@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     ArrowUpRight,
     BarChart3,
+    BookOpen,
     Bot,
     Brain,
     Calendar,
@@ -34,6 +35,8 @@ import {
     Sparkles,
     Timer,
     Trash2,
+    Unlink,
+    Upload,
     User,
     Volume2,
     Webhook,
@@ -65,6 +68,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Sheet,
     SheetContent,
@@ -72,7 +76,7 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
+import { RichTextEditor } from '@/lib/rich-text-editor';
 import {
     Tooltip,
     TooltipContent,
@@ -80,7 +84,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { AgentTestCall } from '@/components/agents/test-call';
-import { tenantApi, TenantApiError } from '@/lib/tenant-api';
+import { TenantApiError, webGet, webPost, webPatch, webDelete } from '@/lib/tenant-api';
 import { cn } from '@/lib/utils';
 import type { Agent, TenantSummary } from '@/types/agent';
 import type { BreadcrumbItem } from '@/types';
@@ -92,6 +96,13 @@ type Props = {
 };
 
 const COST_PER_MINUTE = 0.098;
+
+function extractVariables(text: string): string[] {
+    const regex = /\{([^}]+)\}/g;
+    const matches = text.match(regex);
+    if (!matches) return [];
+    return [...new Set(matches.map(m => m.slice(1, -1)))];
+}
 
 export default function AgentShow({
     tenant,
@@ -105,7 +116,6 @@ export default function AgentShow({
     const [isSaving, setIsSaving] = useState(false);
     const [leftSheetOpen, setLeftSheetOpen] = useState(false);
     const [rightSheetOpen, setRightSheetOpen] = useState(false);
-    const [testCallOpen, setTestCallOpen] = useState(false);
     const [newAgentOpen, setNewAgentOpen] = useState(false);
     const [newAgentMode, setNewAgentMode] = useState<'auto' | 'prebuilt'>('auto');
     const [newAgentForm, setNewAgentForm] = useState({
@@ -116,6 +126,16 @@ export default function AgentShow({
         faqs: '',
     });
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+
+    // Knowledge Base state
+    const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string; slug: string; description: string | null }[]>([]);
+    const [kbDocuments, setKbDocuments] = useState<{ id: string; title: string; status: string; indexing_status: string | null; content_format: string; updated_at: string | null }[]>([]);
+    const [kbLoading, setKbLoading] = useState(false);
+    const [kbCreating, setKbCreating] = useState(false);
+    const [newKbName, setNewKbName] = useState('');
+    const [newKbDesc, setNewKbDesc] = useState('');
+    const [showNewKbForm, setShowNewKbForm] = useState(false);
+    const [uploadingDoc, setUploadingDoc] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
 
     // Sync deferred agents prop when it arrives from Inertia
@@ -131,6 +151,11 @@ export default function AgentShow({
     useEffect(() => {
         setAgent(initialAgent);
     }, [initialAgent]);
+
+    const extractedVariables = useMemo(
+        () => extractVariables(agent?.brain_config?.llm?.instructions || ''),
+        [agent?.brain_config?.llm?.instructions],
+    );
 
     const filteredAgents = searchQuery.trim()
         ? agents.filter((a) =>
@@ -156,13 +181,10 @@ export default function AgentShow({
         if (!agent) return;
         setIsSaving(true);
         try {
-            const result = await tenantApi<{ data: Agent }>(
+            const result = await webPatch<{ data: Agent }>(
                 tenant.slug,
-                `/ai/agents/${agent.id}`,
-                {
-                    method: 'PATCH',
-                    body: agent,
-                },
+                `/agents/${agent.id}`,
+                agent,
             );
             setAgent(result.data);
         } catch (err) {
@@ -176,9 +198,7 @@ export default function AgentShow({
         if (!agent) return;
         if (!confirm(`¿Eliminar el agente "${agent.name}"?`)) return;
         try {
-            await tenantApi(tenant.slug, `/ai/agents/${agent.id}`, {
-                method: 'DELETE',
-            });
+            await webDelete(tenant.slug, `/agents/${agent.id}`);
             router.visit(`/${tenant.slug}/agents`);
         } catch (err) {
             alert(
@@ -188,6 +208,84 @@ export default function AgentShow({
             );
         }
     };
+
+    // Knowledge Base functions
+    const fetchKnowledgeBases = async () => {
+        try {
+            const res = await webGet<{ data: typeof knowledgeBases }>(tenant.slug, '/api/ai/knowledge-bases');
+            setKnowledgeBases(res.data);
+        } catch { /* ignore */ }
+    };
+
+    const fetchKbDocuments = async (kbId: string) => {
+        setKbLoading(true);
+        try {
+            const res = await webGet<{ data: typeof kbDocuments }>(tenant.slug, `/api/ai/knowledge-bases/${kbId}/documents`);
+            setKbDocuments(res.data);
+        } catch { /* ignore */ }
+        setKbLoading(false);
+    };
+
+    const handleLinkKb = (kbId: string) => {
+        if (!agent) return;
+        setAgent({ ...agent, knowledge_base_id: kbId });
+        fetchKbDocuments(kbId);
+    };
+
+    const handleUnlinkKb = () => {
+        if (!agent) return;
+        setAgent({ ...agent, knowledge_base_id: null });
+        setKbDocuments([]);
+    };
+
+    const handleCreateKb = async () => {
+        if (!newKbName.trim()) return;
+        setKbCreating(true);
+        try {
+            const res = await webPost<{ data: { id: string; name: string; slug: string; description: string | null } }>(
+                tenant.slug, '/api/ai/knowledge-bases', { name: newKbName.trim(), description: newKbDesc.trim() || null },
+            );
+            const kb = res.data;
+            setKnowledgeBases((prev) => [...prev, kb]);
+            if (agent) setAgent({ ...agent, knowledge_base_id: kb.id });
+            setNewKbName('');
+            setNewKbDesc('');
+            setShowNewKbForm(false);
+        } catch { /* ignore */ }
+        setKbCreating(false);
+    };
+
+    const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !agent?.knowledge_base_id) return;
+        setUploadingDoc(true);
+        try {
+            const formData = new FormData();
+            formData.append('title', file.name.replace(/\.[^.]+$/, ''));
+            formData.append('content', await file.text());
+            formData.append('content_format', file.name.endsWith('.md') ? 'markdown' : 'text');
+            await webPost(tenant.slug, `/api/ai/knowledge-bases/${agent.knowledge_base_id}/documents`, formData);
+            await fetchKbDocuments(agent.knowledge_base_id);
+        } catch { /* ignore */ }
+        setUploadingDoc(false);
+        e.target.value = '';
+    };
+
+    const handleDeleteDocument = async (docId: string) => {
+        if (!agent?.knowledge_base_id) return;
+        try {
+            await webDelete(tenant.slug, `/api/ai/knowledge-bases/${agent.knowledge_base_id}/documents/${docId}`);
+            setKbDocuments((prev) => prev.filter((d) => d.id !== docId));
+        } catch { /* ignore */ }
+    };
+
+    // Load KBs when switching to knowledge tab
+    useEffect(() => {
+        if (activeTab === 'knowledge') {
+            fetchKnowledgeBases();
+            if (agent?.knowledge_base_id) fetchKbDocuments(agent.knowledge_base_id);
+        }
+    }, [activeTab, agent?.knowledge_base_id]);
 
     const agentTemplates = [
         { id: 'recruitment', name: 'Recruitment Agent', description: 'AI agents that screen, interview, and onboard candidates at scale' },
@@ -217,10 +315,10 @@ export default function AgentShow({
                     template: selectedTemplate,
                 };
 
-            const result = await tenantApi<{ data: Agent }>(
+            const result = await webPost<{ data: Agent }>(
                 tenant.slug,
-                '/ai/agents',
-                { method: 'POST', body },
+                '/agents',
+                body,
             );
             setNewAgentOpen(false);
             setNewAgentForm({ name: '', languages: [], objective: '', next_steps: '', faqs: '' });
@@ -240,15 +338,12 @@ export default function AgentShow({
     const handleCreateFromScratch = async () => {
         setIsCreating(true);
         try {
-            const result = await tenantApi<{ data: Agent }>(
+            const result = await webPost<{ data: Agent }>(
                 tenant.slug,
-                '/ai/agents',
+                '/agents',
                 {
-                    method: 'POST',
-                    body: {
-                        name: `Agente ${new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
-                        language: 'es-CO',
-                    },
+                    name: `Agente ${new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+                    language: 'es-CO',
                 },
             );
             setNewAgentOpen(false);
@@ -420,20 +515,13 @@ export default function AgentShow({
 
             <Separator className="my-4" />
 
-            <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={() => setTestCallOpen(true)}
-            >
-                <Headphones className="size-4" />
-                Test via browser
-                <Badge
-                    variant="secondary"
-                    className="ml-auto text-[10px]"
-                >
-                    BETA
-                </Badge>
-            </Button>
+            <AgentTestCall
+                tenantSlug={tenant.slug}
+                agentId={agent?.id ?? ''}
+                agentName={agent?.name ?? ''}
+                variables={agent?.variables?.filter(v => v.value.trim() !== '')}
+            />
+
             <p className="mt-2 text-xs text-muted-foreground">
                 For best experience, use &quot;Get call from agent&quot;
             </p>
@@ -544,10 +632,18 @@ export default function AgentShow({
                                         {/* Agent Header */}
                                         <div className="mb-6">
                                             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                                <div>
-                                                    <h2 className="text-xl font-semibold sm:text-2xl">
-                                                        {agent.name}
-                                                    </h2>
+                                                <div className="flex-1">
+                                                    <Input
+                                                        value={agent.name}
+                                                        onChange={(e) =>
+                                                            setAgent({
+                                                                ...agent,
+                                                                name: e.target.value,
+                                                            })
+                                                        }
+                                                        className="text-xl font-semibold sm:text-2xl border-0 bg-transparent p-0 focus-visible:ring-0 h-auto w-full"
+                                                        placeholder="Agent name"
+                                                    />
                                                     <div className="mt-2 flex flex-wrap items-center gap-2 sm:gap-3">
                                                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                                                             <span className="inline-flex size-4 items-center justify-center rounded-full border border-muted-foreground/30 text-[10px]">
@@ -625,7 +721,7 @@ export default function AgentShow({
                                             onValueChange={setActiveTab}
                                             className="w-full"
                                         >
-                                            <TabsList className="mb-6 flex w-full overflow-x-auto md:grid md:grid-cols-8">
+                                            <TabsList className="mb-6 grid w-full grid-cols-7">
                                                 <TabsTrigger
                                                     value="agent"
                                                     className="gap-1.5"
@@ -669,18 +765,11 @@ export default function AgentShow({
                                                     <span className="hidden sm:inline">Tools</span>
                                                 </TabsTrigger>
                                                 <TabsTrigger
-                                                    value="analytics"
+                                                    value="knowledge"
                                                     className="gap-1.5"
                                                 >
-                                                    <ArrowUpRight className="size-3.5" />
-                                                    <span className="hidden sm:inline">Analytics</span>
-                                                </TabsTrigger>
-                                                <TabsTrigger
-                                                    value="inbound"
-                                                    className="gap-1.5"
-                                                >
-                                                    <PhoneIncoming className="size-3.5" />
-                                                    <span className="hidden sm:inline">Inbound</span>
+                                                    <BookOpen className="size-3.5" />
+                                                    <span className="hidden sm:inline">Knowledge</span>
                                                 </TabsTrigger>
                                             </TabsList>
 
@@ -709,23 +798,22 @@ export default function AgentShow({
                                                         </Tooltip>
                                                     </div>
                                                     <div className="p-4">
-                                                        <Textarea
-                                                            placeholder="Hi, this is {agent_name}, ready to help you..."
-                                                            className="min-h-[80px] resize-none border-0 bg-transparent p-0 focus-visible:ring-0"
-                                                            value={
+                                                        <RichTextEditor.Root
+                                                            content={
                                                                 agent.brain_config
                                                                     ?.welcome_message || ''
                                                             }
-                                                            onChange={(e) =>
+                                                            onUpdate={(content) =>
                                                                 setAgent({
                                                                     ...agent,
                                                                     brain_config: {
                                                                         ...agent.brain_config,
-                                                                        welcome_message:
-                                                                            e.target.value,
+                                                                        welcome_message: content,
                                                                     },
                                                                 })
                                                             }
+                                                            placeholder="Hi, this is {agent_name}, ready to help you..."
+                                                            minHeight="80px"
                                                         />
                                                         <p className="mt-2 text-xs text-muted-foreground">
                                                             You can define variables using{' '}
@@ -765,26 +853,86 @@ export default function AgentShow({
                                                         </Button>
                                                     </div>
                                                     <div className="p-4">
-                                                        <Textarea
-                                                            placeholder="Define el comportamiento, personalidad y objetivos del agente..."
-                                                            className="min-h-[200px] resize-none border-0 bg-transparent p-0 focus-visible:ring-0"
-                                                            value={
+                                                        <RichTextEditor.Root
+                                                            content={
                                                                 agent.brain_config
-                                                                    ?.system_prompt || ''
+                                                                    ?.llm?.instructions || ''
                                                             }
-                                                            onChange={(e) =>
+                                                            onUpdate={(content) =>
                                                                 setAgent({
                                                                     ...agent,
                                                                     brain_config: {
                                                                         ...agent.brain_config,
-                                                                        system_prompt:
-                                                                            e.target.value,
+                                                                        llm: {
+                                                                            ...agent.brain_config?.llm,
+                                                                            instructions: content,
+                                                                        },
                                                                     },
                                                                 })
                                                             }
+                                                            placeholder="Define el comportamiento, personalidad y objetivos del agente..."
+                                                            minHeight="200px"
                                                         />
                                                     </div>
                                                 </div>
+
+                                                {/* Variables Configuration */}
+                                                {extractedVariables.length > 0 && (
+                                                    <div className="rounded-xl border border-border bg-card">
+                                                        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                                                            <Settings className="size-4 text-muted-foreground" />
+                                                            <h3 className="font-medium">Variables</h3>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <HelpCircle className="size-3.5 cursor-help text-muted-foreground" />
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>
+                                                                        Configura los valores de las variables usadas en el prompt
+                                                                    </p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </div>
+                                                        <div className="space-y-4 p-4">
+                                                            {extractedVariables.map((varName) => {
+                                                                const existingVar = agent.variables?.find(v => v.name === varName);
+                                                                return (
+                                                                    <div key={varName} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                                                        <div className="space-y-1">
+                                                                            <Label className="text-xs text-muted-foreground">Variable</Label>
+                                                                            <Input
+                                                                                value={varName}
+                                                                                disabled
+                                                                                className="bg-muted"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="space-y-1 sm:col-span-2">
+                                                                            <Label className="text-xs text-muted-foreground">Valor</Label>
+                                                                            <Input
+                                                                                placeholder={`Valor para ${varName}`}
+                                                                                value={existingVar?.value || ''}
+                                                                                onChange={(e) => {
+                                                                                    const vars = agent.variables || [];
+                                                                                    const existingIndex = vars.findIndex(v => v.name === varName);
+                                                                                    if (existingIndex >= 0) {
+                                                                                        const newVars = [...vars];
+                                                                                        newVars[existingIndex] = { ...newVars[existingIndex], value: e.target.value };
+                                                                                        setAgent({ ...agent, variables: newVars });
+                                                                                    } else {
+                                                                                        setAgent({
+                                                                                            ...agent,
+                                                                                            variables: [...vars, { name: varName, value: e.target.value }],
+                                                                                        });
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </TabsContent>
 
                                             {/* LLM Tab */}
@@ -799,13 +947,16 @@ export default function AgentShow({
                                                         <div className="space-y-2">
                                                             <Label>Provider</Label>
                                                             <Select
-                                                                value={agent.brain_config?.provider || 'openai'}
+                                                                value={agent.brain_config?.llm?.provider || 'openai'}
                                                                 onValueChange={(val) =>
                                                                     setAgent({
                                                                         ...agent,
                                                                         brain_config: {
                                                                             ...agent.brain_config,
-                                                                            provider: val as string,
+                                                                            llm: {
+                                                                                ...agent.brain_config?.llm,
+                                                                                provider: val as string,
+                                                                            },
                                                                         },
                                                                     })
                                                                 }
@@ -825,13 +976,16 @@ export default function AgentShow({
                                                         <div className="space-y-2">
                                                             <Label>Model</Label>
                                                             <Select
-                                                                value={agent.brain_config?.model || 'gpt-4o'}
+                                                                value={agent.brain_config?.llm?.model || 'gpt-4o'}
                                                                 onValueChange={(val) =>
                                                                     setAgent({
                                                                         ...agent,
                                                                         brain_config: {
                                                                             ...agent.brain_config,
-                                                                            model: val as string,
+                                                                            llm: {
+                                                                                ...agent.brain_config?.llm,
+                                                                                model: val as string,
+                                                                            },
                                                                         },
                                                                     })
                                                                 }
@@ -862,17 +1016,23 @@ export default function AgentShow({
                                                             <div className="flex items-center justify-between">
                                                                 <Label>Tokens generated on each LLM output</Label>
                                                                 <span className="rounded-md border border-border px-2 py-0.5 text-sm font-medium tabular-nums">
-                                                                    {agent.brain_config?.max_tokens ?? 1536}
+                                                                    {agent.brain_config?.llm?.config?.max_tokens ?? 1024}
                                                                 </span>
                                                             </div>
                                                             <Slider
-                                                                value={[agent.brain_config?.max_tokens ?? 1536]}
+                                                                value={[agent.brain_config?.llm?.config?.max_tokens ?? 1024] as [number]}
                                                                 onValueChange={([val]) =>
                                                                     setAgent({
                                                                         ...agent,
                                                                         brain_config: {
                                                                             ...agent.brain_config,
-                                                                            max_tokens: val,
+                                                                            llm: {
+                                                                                ...agent.brain_config?.llm,
+                                                                                config: {
+                                                                                    ...agent.brain_config?.llm?.config,
+                                                                                    max_tokens: val,
+                                                                                },
+                                                                            },
                                                                         },
                                                                     })
                                                                 }
@@ -888,17 +1048,23 @@ export default function AgentShow({
                                                             <div className="flex items-center justify-between">
                                                                 <Label>Temperature</Label>
                                                                 <span className="rounded-md border border-border px-2 py-0.5 text-sm font-medium tabular-nums">
-                                                                    {(agent.brain_config?.temperature ?? 0.6).toFixed(2)}
+                                                                    {(agent.brain_config?.llm?.config?.temperature ?? 0.5).toFixed(2)}
                                                                 </span>
                                                             </div>
                                                             <Slider
-                                                                value={[agent.brain_config?.temperature ?? 0.6]}
+                                                                value={[agent.brain_config?.llm?.config?.temperature ?? 0.5]}
                                                                 onValueChange={([val]) =>
                                                                     setAgent({
                                                                         ...agent,
                                                                         brain_config: {
                                                                             ...agent.brain_config,
-                                                                            temperature: parseFloat(val.toFixed(2)),
+                                                                            llm: {
+                                                                                ...agent.brain_config?.llm,
+                                                                                config: {
+                                                                                    ...agent.brain_config?.llm?.config,
+                                                                                    temperature: parseFloat(val.toFixed(2)),
+                                                                                },
+                                                                            },
                                                                         },
                                                                     })
                                                                 }
@@ -1576,19 +1742,19 @@ export default function AgentShow({
                                                         <h3 className="font-medium">Final Call Message</h3>
                                                     </div>
                                                     <div className="p-4">
-                                                        <Textarea
-                                                            placeholder="e.g. Thank you for your time. Goodbye!"
-                                                            className="min-h-[80px]"
-                                                            value={agent.runtime_config?.final_call_message || ''}
-                                                            onChange={(e) =>
+                                                        <RichTextEditor.Root
+                                                            content={agent.runtime_config?.final_call_message || ''}
+                                                            onUpdate={(content) =>
                                                                 setAgent({
                                                                     ...agent,
                                                                     runtime_config: {
                                                                         ...agent.runtime_config,
-                                                                        final_call_message: e.target.value,
+                                                                        final_call_message: content,
                                                                     },
                                                                 })
                                                             }
+                                                            placeholder="e.g. Thank you for your time. Goodbye!"
+                                                            minHeight="80px"
                                                         />
                                                         <p className="mt-1 text-right text-xs text-muted-foreground">
                                                             {(agent.runtime_config?.final_call_message || '').length} chars
@@ -1803,47 +1969,150 @@ export default function AgentShow({
                                                 </div>
                                             </TabsContent>
 
-                                            {/* Analytics Tab */}
-                                            <TabsContent value="analytics" className="space-y-6">
+                                            <TabsContent value="knowledge" className="space-y-6">
+                                                {/* Link / Select Knowledge Base */}
                                                 <div className="rounded-xl border border-border bg-card">
                                                     <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                                                        <BarChart3 className="size-4 text-muted-foreground" />
-                                                        <h3 className="font-medium">Analytics</h3>
+                                                        <BookOpen className="size-4 text-muted-foreground" />
+                                                        <h3 className="flex-1 font-medium">Knowledge Base</h3>
+                                                        {agent?.knowledge_base_id && (
+                                                            <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-destructive" onClick={handleUnlinkKb}>
+                                                                <Unlink className="size-3" />
+                                                                Unlink
+                                                            </Button>
+                                                        )}
                                                     </div>
-                                                    <div className="rounded-lg border border-dashed border-border m-4 p-8 text-center">
-                                                        <BarChart3 className="mx-auto size-10 text-muted-foreground" />
-                                                        <h3 className="mt-4 text-base font-semibold text-muted-foreground">
-                                                            No data yet
-                                                        </h3>
-                                                        <p className="mt-2 text-sm text-muted-foreground">
-                                                            Analytics will appear here once the agent starts receiving calls.
-                                                        </p>
+                                                    <div className="p-4">
+                                                        {!agent?.knowledge_base_id ? (
+                                                            <div className="space-y-4">
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    Link a knowledge base to give your agent access to documents for RAG-powered responses.
+                                                                </p>
+                                                                {knowledgeBases.length > 0 && (
+                                                                    <div className="space-y-2">
+                                                                        <Label>Select existing</Label>
+                                                                        <div className="grid gap-2">
+                                                                            {knowledgeBases.map((kb) => (
+                                                                                <button
+                                                                                    key={kb.id}
+                                                                                    type="button"
+                                                                                    onClick={() => handleLinkKb(kb.id)}
+                                                                                    className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:bg-muted"
+                                                                                >
+                                                                                    <BookOpen className="size-4 shrink-0 text-muted-foreground" />
+                                                                                    <div className="min-w-0 flex-1">
+                                                                                        <p className="text-sm font-medium">{kb.name}</p>
+                                                                                        {kb.description && <p className="truncate text-xs text-muted-foreground">{kb.description}</p>}
+                                                                                    </div>
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {!showNewKbForm ? (
+                                                                    <Button variant="outline" className="w-full gap-2" onClick={() => setShowNewKbForm(true)}>
+                                                                        <Plus className="size-4" />
+                                                                        Create new Knowledge Base
+                                                                    </Button>
+                                                                ) : (
+                                                                    <div className="space-y-3 rounded-lg border border-border p-3">
+                                                                        <div className="space-y-1.5">
+                                                                            <Label>Name</Label>
+                                                                            <Input value={newKbName} onChange={(e) => setNewKbName(e.target.value)} placeholder="e.g. Product Documentation" />
+                                                                        </div>
+                                                                        <div className="space-y-1.5">
+                                                                            <Label>Description</Label>
+                                                                            <Textarea value={newKbDesc} onChange={(e) => setNewKbDesc(e.target.value)} placeholder="Optional description..." className="min-h-[60px]" />
+                                                                        </div>
+                                                                        <div className="flex gap-2">
+                                                                            <Button size="sm" onClick={handleCreateKb} disabled={kbCreating || !newKbName.trim()}>
+                                                                                {kbCreating ? 'Creating...' : 'Create & Link'}
+                                                                            </Button>
+                                                                            <Button variant="ghost" size="sm" onClick={() => { setShowNewKbForm(false); setNewKbName(''); setNewKbDesc(''); }}>
+                                                                                Cancel
+                                                                            </Button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                                                                <BookOpen className="size-5 text-primary" />
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-sm font-medium">
+                                                                        {knowledgeBases.find((kb) => kb.id === agent.knowledge_base_id)?.name ?? 'Knowledge Base'}
+                                                                    </p>
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {kbDocuments.length} document{kbDocuments.length !== 1 ? 's' : ''}
+                                                                    </p>
+                                                                </div>
+                                                                <Badge variant="secondary">Linked</Badge>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
+
+                                                {/* Documents */}
+                                                {agent?.knowledge_base_id && (
+                                                    <div className="rounded-xl border border-border bg-card">
+                                                        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                                                            <FileText className="size-4 text-muted-foreground" />
+                                                            <h3 className="flex-1 font-medium">Documents</h3>
+                                                            <label className="cursor-pointer">
+                                                                <input type="file" accept=".txt,.md,.csv,.json" className="hidden" onChange={handleUploadDocument} disabled={uploadingDoc} />
+                                                                <Button variant="outline" size="sm" className="pointer-events-none gap-1.5" asChild>
+                                                                    <span>
+                                                                        <Upload className="size-3.5" />
+                                                                        {uploadingDoc ? 'Uploading...' : 'Upload'}
+                                                                    </span>
+                                                                </Button>
+                                                            </label>
+                                                        </div>
+                                                        <div className="p-4">
+                                                            {kbLoading ? (
+                                                                <div className="flex items-center justify-center py-8">
+                                                                    <span className="text-sm text-muted-foreground">Loading documents...</span>
+                                                                </div>
+                                                            ) : kbDocuments.length === 0 ? (
+                                                                <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                                                                    <FileText className="size-8 text-muted-foreground/50" />
+                                                                    <p className="text-sm text-muted-foreground">No documents yet</p>
+                                                                    <p className="text-xs text-muted-foreground">Upload text or markdown files to build your knowledge base.</p>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="space-y-2">
+                                                                    {kbDocuments.map((doc) => (
+                                                                        <div key={doc.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                                                                            <FileText className="size-4 shrink-0 text-muted-foreground" />
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <p className="truncate text-sm font-medium">{doc.title}</p>
+                                                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                                                    <span>{doc.content_format}</span>
+                                                                                    {doc.indexing_status && (
+                                                                                        <Badge variant={doc.indexing_status === 'completed' ? 'secondary' : doc.indexing_status === 'failed' ? 'destructive' : 'outline'} className="text-[10px]">
+                                                                                            {doc.indexing_status}
+                                                                                        </Badge>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="size-7 text-muted-foreground hover:text-destructive"
+                                                                                onClick={() => handleDeleteDocument(doc.id)}
+                                                                            >
+                                                                                <Trash2 className="size-3.5" />
+                                                                            </Button>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </TabsContent>
 
-                                            {/* Inbound Tab */}
-                                            <TabsContent value="inbound" className="space-y-6">
-                                                <div className="rounded-xl border border-border bg-card">
-                                                    <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-                                                        <PhoneIncoming className="size-4 text-muted-foreground" />
-                                                        <h3 className="font-medium">Inbound Configuration</h3>
-                                                    </div>
-                                                    <div className="rounded-lg border border-dashed border-border m-4 p-8 text-center">
-                                                        <PhoneIncoming className="mx-auto size-10 text-muted-foreground" />
-                                                        <h3 className="mt-4 text-base font-semibold text-muted-foreground">
-                                                            No phone numbers configured
-                                                        </h3>
-                                                        <p className="mt-2 text-sm text-muted-foreground">
-                                                            Purchase or connect phone numbers to receive inbound calls.
-                                                        </p>
-                                                        <Button variant="outline" className="mt-4 gap-2">
-                                                            <Plus className="size-4" />
-                                                            Add Phone Number
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </TabsContent>
+                                            
                                         </Tabs>
 
                                         {/* Mobile: Save bar fijo abajo */}
@@ -1889,25 +2158,6 @@ export default function AgentShow({
                             </SheetContent>
                         </Sheet>
                     </div>
-
-                    {/* Test Call Dialog */}
-                    {agent && (
-                        <Dialog open={testCallOpen} onOpenChange={setTestCallOpen}>
-                            <DialogContent className="sm:max-w-lg">
-                                <DialogHeader>
-                                    <DialogTitle>Test via browser</DialogTitle>
-                                    <DialogDescription>
-                                        Start a live WebRTC session with your agent directly from the browser.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <AgentTestCall
-                                    tenantSlug={tenant.slug}
-                                    agentId={agent.id}
-                                    agentName={agent.name}
-                                />
-                            </DialogContent>
-                        </Dialog>
-                    )}
 
                     {/* New Agent Dialog */}
                     <Dialog open={newAgentOpen} onOpenChange={setNewAgentOpen}>

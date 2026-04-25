@@ -102,3 +102,63 @@ export async function tenantApi<T = unknown>(
 
     return payload as T;
 }
+
+async function webFetch<T = unknown>(
+    method: string,
+    tenantSlug: string,
+    path: string,
+    body?: unknown,
+): Promise<T> {
+    const slug = tenantSlug || getTenantSlugFromUrl();
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    const url = `/${slug}${normalized}`;
+
+    const headers = new Headers();
+    headers.set('Accept', 'application/json');
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+
+    const xsrf = getCookie('XSRF-TOKEN');
+    if (xsrf) {
+        headers.set('X-XSRF-TOKEN', decodeURIComponent(xsrf));
+    }
+
+    let requestBody: BodyInit | undefined;
+    if (body !== undefined && body !== null) {
+        headers.set('Content-Type', 'application/json');
+        requestBody = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, {
+        method,
+        headers,
+        body: requestBody,
+        credentials: 'include',
+    });
+
+    const contentType = response.headers.get('Content-Type') ?? '';
+    const payload = contentType.includes('application/json')
+        ? await response.json().catch(() => null)
+        : await response.text().catch(() => null);
+
+    if (!response.ok) {
+        const message =
+            (payload && typeof payload === 'object' && 'message' in payload
+                ? String((payload as { message: unknown }).message)
+                : null) ?? `Request failed with status ${response.status}`;
+        throw new TenantApiError(message, response.status, payload);
+    }
+
+    return payload as T;
+}
+
+export const webGet = <T = unknown>(tenantSlug: string, path: string) =>
+    webFetch<T>('GET', tenantSlug, path);
+
+export const webPost = <T = unknown>(tenantSlug: string, path: string, body?: unknown) =>
+    webFetch<T>('POST', tenantSlug, path, body);
+
+export const webPatch = <T = unknown>(tenantSlug: string, path: string, body?: unknown) =>
+    webFetch<T>('PATCH', tenantSlug, path, body);
+
+export const webDelete = <T = unknown>(tenantSlug: string, path: string) =>
+    webFetch<T>('DELETE', tenantSlug, path);

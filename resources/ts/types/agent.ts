@@ -1,10 +1,27 @@
 export type AgentBrainConfig = {
-    provider?: string;
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    system_prompt?: string;
     welcome_message?: string;
+    llm?: {
+        provider?: string;
+        model?: string;
+        instructions?: string;
+        config?: {
+            temperature?: number;
+            max_tokens?: number;
+            top_p?: number;
+        };
+    };
+    localization?: {
+        default_locale?: string;
+        timezone?: string;
+        currency?: string;
+        number_format?: string;
+    };
+    context?: {
+        strategy?: string;
+        max_tokens?: number;
+        min_messages?: number;
+        enabled?: boolean;
+    };
     [key: string]: unknown;
 };
 
@@ -55,6 +72,12 @@ export type AgentTool = {
     disabled?: boolean;
 };
 
+export type AgentVariable = {
+    name: string;
+    value: string;
+    description?: string;
+};
+
 export type Agent = {
     id: string;
     name: string;
@@ -71,6 +94,7 @@ export type Agent = {
     architecture_config: Record<string, unknown> | null;
     capabilities_config: Record<string, unknown> | null;
     observability_config: Record<string, unknown> | null;
+    variables: AgentVariable[];
     created_at: string | null;
     updated_at: string | null;
 };
