@@ -43,7 +43,7 @@ Three steps are always required:
 ### 1. Install Passport
 
 ```bash
-vendor/bin/sail artisan install:api --passport
+vendor\bin\sail artisan install:api --passport
 ```
 
 This publishes migrations, generates encryption keys, and registers routes.
@@ -94,15 +94,15 @@ Matching the right grant to the use case is the most important Passport decision
 Create clients with the appropriate flag for the grant type:
 
 ```bash
-vendor/bin/sail artisan passport:client              # Authorization code
+vendor\bin\sail artisan passport:client              # Authorization code
 
-vendor/bin/sail artisan passport:client --public     # PKCE (no secret)
+vendor\bin\sail artisan passport:client --public     # PKCE (no secret)
 
-vendor/bin/sail artisan passport:client --client     # Client credentials
+vendor\bin\sail artisan passport:client --client     # Client credentials
 
-vendor/bin/sail artisan passport:client --personal   # Personal access tokens
+vendor\bin\sail artisan passport:client --personal   # Personal access tokens
 
-vendor/bin/sail artisan passport:client --device     # Device authorization
+vendor\bin\sail artisan passport:client --device     # Device authorization
 
 ```
 
@@ -181,11 +181,11 @@ Passport::actingAsClient($client, ['scope1']);
 ## Token Maintenance
 
 ```bash
-vendor/bin/sail artisan passport:purge              # Purge revoked & expired
+vendor\bin\sail artisan passport:purge              # Purge revoked & expired
 
-vendor/bin/sail artisan passport:purge --revoked    # Only revoked
+vendor\bin\sail artisan passport:purge --revoked    # Only revoked
 
-vendor/bin/sail artisan passport:purge --expired    # Only expired
+vendor\bin\sail artisan passport:purge --expired    # Only expired
 
 ```
 

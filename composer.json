@@ -24,6 +24,7 @@
         "laravel/wayfinder": "^0.1.14",
         "league/flysystem-aws-s3-v3": "^3.0",
         "pragmarx/google2fa": "^9.0",
+        "predis/predis": "^3.4",
         "socialiteproviders/microsoft": "^4.8",
         "spatie/laravel-data": "^4.20",
         "spatie/laravel-pdf": "^2.2",
@@ -67,6 +68,10 @@
         "dev": [
             "Composer\\Config::disableProcessTimeout",
             "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
+        ],
+        "dev:win": [
+            "Composer\\Config::disableProcessTimeout",
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"npm run dev\" --names=server,queue,vite --kill-others"
         ],
         "dev:ssr": [
             "npm run build:ssr",
