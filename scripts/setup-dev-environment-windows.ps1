@@ -214,6 +214,24 @@ Write-Host "  Running composer install..."
 Write-Host "  Running pnpm install..."
 pnpm install
 
+# --- 9b. Runners (Python microservice) dependencies ---
+Write-Step "Installing Runners service dependencies..."
+$runnersDir = Join-Path $projectDir "services\runners"
+if (Test-Path "$runnersDir\pyproject.toml") {
+    Push-Location $runnersDir
+    uv sync
+    $runnersEnv = Join-Path $runnersDir ".env"
+    $runnersEnvExample = Join-Path $runnersDir ".env.example"
+    if ((-not (Test-Path $runnersEnv)) -and (Test-Path $runnersEnvExample)) {
+        Copy-Item $runnersEnvExample $runnersEnv
+        Write-Host "  Runners .env created from .env.example" -ForegroundColor Green
+    }
+    Pop-Location
+    Write-Host "  Runners dependencies installed." -ForegroundColor Green
+} else {
+    Write-Host "  Runners pyproject.toml not found, skipping." -ForegroundColor Yellow
+}
+
 # --- 10. Environment setup ---
 $envFile = Join-Path $projectDir ".env"
 $envExample = Join-Path $projectDir ".env.example"
@@ -252,10 +270,12 @@ Installed:
   - pnpm
   - Python 3.13
   - uv (Python package manager)
+  - Runners service (FastAPI microservice on port 8000)
 
 Next steps:
   1. Open a NEW terminal (to pick up PATH changes)
   2. Start Laragon: $LaragonPath\laragon.exe
   3. Run the dev server: composer dev:win
+     (This starts Laravel, queue, Vite, AND the Runners API)
 
 "@ -ForegroundColor White

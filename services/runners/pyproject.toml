@@ -12,7 +12,8 @@ dependencies = [
     "uvicorn==0.34.0",
     "loguru==0.7.3",
     "pytz==2025.1",
-    "pipecat-ai[daily,livekit,openai,deepgram,cartesia,silero,google,anthropic,groq,together,mistral,playht,azure,gladia,assemblyai,aws,ultravox]",
+    "pipecat-ai[daily,livekit,openai,deepgram,cartesia,silero,google,anthropic,groq,together,mistral,playht,azure,gladia,assemblyai,aws,ultravox] ; sys_platform != 'win32'",
+    "pipecat-ai[livekit,openai,deepgram,cartesia,silero,google,anthropic,groq,together,mistral,playht,azure,gladia,assemblyai,aws,ultravox] ; sys_platform == 'win32'",
     "pydantic_settings",
     "pipecat-ai-flows",
     "google-genai",
@@ -73,3 +74,11 @@ filterwarnings = [
     "ignore::FutureWarning",
 ]
 addopts = "-W ignore::DeprecationWarning -W ignore::FutureWarning"
+
+
+[tool.uv]
+environments = [
+    "sys_platform == 'win32'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
