@@ -16,7 +16,7 @@ from pipecat.processors.frameworks.rtvi import (
     RTVIObserver,
 )
 from pipecat.frames.frames import EndFrame, LLMRunFrame, TTSSpeakFrame
-from pipecat.processors.user_idle_processor import UserIdleProcessor
+from pipecat.processors.idle_frame_processor import IdleFrameProcessor
 
 from app.schemas.agent import AgentConfig
 from app.services.agents.factory.builder import ServiceFactory
@@ -309,7 +309,7 @@ class AgentPipelineEngine:
 
         return ambient_player, thinking_player
 
-    async def _setup_idle_processor(self) -> Optional[UserIdleProcessor]:
+    async def _setup_idle_processor(self) -> Optional[IdleFrameProcessor]:
         session_limits = self.config.runtime_profiles.session_limits
         if (
             not session_limits
@@ -325,7 +325,7 @@ class AgentPipelineEngine:
 
         self.idle_stage = 0
 
-        async def on_user_idle(frame):
+        async def on_user_idle(processor: IdleFrameProcessor):
             if self.idle_stage >= len(steps):
                 if self.task:
                     await self.task.queue_frames(
@@ -345,7 +345,7 @@ class AgentPipelineEngine:
             if self.idle_stage < len(steps):
                 self.user_idle.timeout = steps[self.idle_stage].wait_seconds
 
-        self.user_idle = UserIdleProcessor(
+        self.user_idle = IdleFrameProcessor(
             callback=on_user_idle, timeout=steps[0].wait_seconds
         )
         return self.user_idle

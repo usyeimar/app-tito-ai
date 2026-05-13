@@ -1,6 +1,4 @@
 import logging
-from pipecat.transports.daily.transport import DailyTransport, DailyParams
-from pipecat.transports.livekit.transport import LiveKitTransport, LiveKitParams
 from pipecat.audio.vad.vad_analyzer import VADParams
 from app.schemas.agent import AgentConfig
 from app.core.config import settings
@@ -54,6 +52,8 @@ async def setup_transport(
         logger.info("🎙️ Transport: Using Silero VAD")
 
     if provider == "daily":
+        from pipecat.transports.daily.transport import DailyTransport, DailyParams
+
         transport = DailyTransport(
             room_url,
             token,
@@ -66,6 +66,8 @@ async def setup_transport(
             ),
         )
     else:
+        from pipecat.transports.livekit.transport import LiveKitTransport, LiveKitParams
+
         transport = LiveKitTransport(
             room_url,
             token,

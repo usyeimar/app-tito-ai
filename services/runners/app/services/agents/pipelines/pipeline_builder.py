@@ -22,7 +22,8 @@ def build_pipeline(
     user_idle=None,
     thinking_player=None,
     ambient_player=None,
-    rtvi_processor=None
+    rtvi_processor=None,
+    rag_processor=None
 ):
     """Construye la lista de procesadores del pipeline."""
     final_processors = [
