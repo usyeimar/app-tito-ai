@@ -125,24 +125,32 @@ if (-not (Test-Path "$PhpPath\php.exe")) {
     Invoke-WebRequest -Uri $PhpZip -OutFile $phpFile -UseBasicParsing
     New-Item -ItemType Directory -Force -Path $PhpPath | Out-Null
     Expand-Archive -Path $phpFile -DestinationPath $PhpPath -Force
-    # Configure php.ini
-    Copy-Item "$PhpPath\php.ini-development" "$PhpPath\php.ini"
-    $extensions = @(
-        "extension=bcmath", "extension=curl", "extension=fileinfo", "extension=gd",
-        "extension=gettext", "extension=intl", "extension=mbstring", "extension=exif",
-        "extension=openssl", "extension=pdo_mysql", "extension=pdo_pgsql",
-        "extension=pdo_sqlite", "extension=redis", "extension=soap", "extension=sodium",
-        "extension=sockets", "extension=xml", "extension=zip", "extension=iconv"
-    )
-    $iniContent = Get-Content "$PhpPath\php.ini"
-    $iniContent = $iniContent -replace ';extension_dir = "ext"', 'extension_dir = "ext"'
-    $iniContent += "`n; === Tito AI extensions ==="
-    $iniContent += $extensions | ForEach-Object { "`n$_" }
-    Set-Content "$PhpPath\php.ini" $iniContent
-    Write-Host "  PHP 8.5.6 configured with required extensions." -ForegroundColor Green
+    Write-Host "  PHP 8.5.6 extracted." -ForegroundColor Green
 } else {
     Write-Host "  PHP 8.5.6 already exists." -ForegroundColor Yellow
 }
+
+# Configure php.ini (only if not already configured)
+$phpIni = "$PhpPath\php.ini"
+if (-not (Test-Path $phpIni)) {
+    Copy-Item "$PhpPath\php.ini-development" $phpIni
+}
+# Enable extensions that are commented out (skip built-ins: bcmath, xml, iconv are compiled-in on PHP 8.5)
+$extensionsToEnable = @(
+    "curl", "fileinfo", "gd", "gettext", "intl", "mbstring", "exif",
+    "openssl", "pdo_mysql", "pdo_pgsql", "pdo_sqlite", "soap",
+    "sodium", "sockets", "zip"
+)
+$iniContent = Get-Content $phpIni
+$iniContent = $iniContent -replace '^;extension_dir = "ext"', 'extension_dir = "ext"'
+foreach ($ext in $extensionsToEnable) {
+    # Only uncomment if it's commented, don't add if already active
+    $iniContent = $iniContent -replace "^;(extension=$ext)$", '$1'
+}
+# Remove any invalid extension lines (bcmath, xml, iconv are not DLLs)
+$iniContent = $iniContent | Where-Object { $_ -notmatch "^extension=(bcmath|xml|iconv)$" }
+Set-Content $phpIni $iniContent
+Write-Host "  PHP extensions enabled." -ForegroundColor Green
 
 # --- 4. Update PATH ---
 Write-Step "Configuring PATH..."
@@ -197,8 +205,7 @@ if (-not (Test-Command "uv")) {
 
 # --- 9. Project dependencies ---
 Write-Step "Installing project dependencies..."
-$projectDir = $PSScriptRoot
-if (-not $projectDir) { $projectDir = Get-Location }
+$projectDir = if ($PSScriptRoot) { Split-Path $PSScriptRoot -Parent } else { Get-Location }
 Push-Location $projectDir
 
 Write-Host "  Running composer install..."
@@ -208,12 +215,18 @@ Write-Host "  Running pnpm install..."
 pnpm install
 
 # --- 10. Environment setup ---
-if (-not (Test-Path ".env")) {
-    Copy-Item ".env.example" ".env"
-    & "$PhpPath\php.exe" artisan key:generate
-    Write-Host "  .env created and app key generated." -ForegroundColor Green
+$envFile = Join-Path $projectDir ".env"
+$envExample = Join-Path $projectDir ".env.example"
+if (-not (Test-Path $envFile)) {
+    if (Test-Path $envExample) {
+        Copy-Item $envExample $envFile
+        & "$PhpPath\php.exe" artisan key:generate
+        Write-Host "  .env created and app key generated." -ForegroundColor Green
+    } else {
+        Write-Host "  .env.example not found, skipping .env creation." -ForegroundColor Yellow
+    }
 } else {
-    Write-Host "  .env already exists." -ForegroundColor Yellow
+    Write-Host "  .env already exists, not overwriting." -ForegroundColor Yellow
 }
 
 # --- 11. Database migrations ---
