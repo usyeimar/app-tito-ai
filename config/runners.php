@@ -20,7 +20,7 @@ declare(strict_types=1);
 */
 
 return [
-    'base_url' => rtrim((string) env('TITO_RUNNERS_URL', 'http://localhost:8000'), '/'),
+    'base_url' => rtrim((string) env('TITO_RUNNERS_URL', 'http://localhost:8001'), '/'),
 
     'api_key' => env('TITO_RUNNERS_API_KEY'),
 

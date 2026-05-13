@@ -67,11 +67,11 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#34d399\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" \"cd services/runners && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload\" --names=server,queue,logs,vite,runners --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74,#34d399\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" \"cd services/runners && uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload\" --names=server,queue,logs,vite,runners --kill-others"
         ],
         "dev:win": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74,#34d399\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"npm run dev\" \"cd services/runners && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload\" --names=server,queue,vite,runners --kill-others"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74,#34d399\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"npm run dev\" \"cd services/runners && uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload\" --names=server,queue,vite,runners --kill-others"
         ],
         "dev:ssr": [
             "npm run build:ssr",
